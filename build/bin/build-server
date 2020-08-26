@@ -27,6 +27,7 @@ ${bin_dir}/build-server-rpm clickhouse
 ${bin_dir}/build-server-rpm prometheus
 ${bin_dir}/build-server-rpm alertmanager
 ${bin_dir}/build-server-rpm grafana
+${bin_dir}/build-server-rpm aws-iam-authenticator
 
 ${bin_dir}/build-server-docker
 
