@@ -100,8 +100,8 @@ class Builder():
             self.custom_config = {'deps': [global_branch,]}
 
         self.write_custom_config(self.custom_config)
-        repo.git.add(all=True)
-        repo.index.commit(f'Create feature build: {branch_name}')
+        repo.git.add([YAML_CONFIG_CUSTOM])
+        repo.index.commit(f'{branch_name} feature build')
         origin = repo.remote(name='origin')
         origin.push()
         logging.info('Branch was created')

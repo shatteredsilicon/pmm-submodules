@@ -57,6 +57,7 @@ pipeline {
             steps {
                 sh '''
                     set -o errexit
+                    # file isn't empty
                     if [ -s ci.yml ]
                     then
                         sudo rm -rf results tmp || :
