@@ -1,0 +1,74 @@
+#!/bin/bash
+
+set -o errexit
+set -o xtrace
+
+. $(dirname $0)/vars
+
+PACKAGES=${packages[@]}
+
+usage () {
+    cat <<EOF
+Usage: $0 [OPTIONS] [PACKAGES]
+
+    The following options may be given:
+        --help) usage ;;
+
+    The following packages may be given:
+        ${packages[@]}
+
+Example $0 ssm-client ssm-dashboards
+EOF
+        exit 1
+}
+
+shell_quote_string() {
+  echo "$1" | sed -e 's,\([^a-zA-Z0-9/_.=-]\),\\\1,g'
+}
+
+build_rpms() {
+    local build_commands=
+
+    for package in ${PACKAGES[@]}; do
+        build_commands="
+            ${build_commands}
+            /home/builder/ssm-submodules/build/bin/build-rpm ${package}
+        "
+    done
+
+    docker run --privileged --rm -v ${root_dir}:/home/builder/ssm-submodules ${rpmbuild_docker_image} sh -c "
+        set -o errexit
+        set -o xtrace
+ 
+        ${build_commands}
+    "
+}
+
+main() {
+    declare -a TMP_PACKAGES
+
+    for arg do
+        val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
+        case "$arg" in
+            --help)         usage ;;
+            -*)             usage ;;
+            *)              TMP_PACKAGES+=(`shell_quote_string "$arg"`) ;;
+        esac
+    done
+
+    if [ ${#TMP_PACKAGES[@]} -gt 0 ]; then
+        PACKAGES=${TMP_PACKAGES[@]}
+    fi
+    
+    if [[ -z "${USE_DOCKER}" ]] || [[ ${USE_DOCKER} -eq 0 ]]; then
+        for package in ${PACKAGES[@]}; do
+            "${bin_dir}/build-rpm" $package
+        done
+    else
+        chown -R 1000:1000 ${root_dir}
+
+        build_rpms
+    fi
+}
+
+main $@

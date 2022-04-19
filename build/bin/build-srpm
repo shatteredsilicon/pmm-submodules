@@ -1,0 +1,153 @@
+#!/bin/bash
+
+set -o errexit
+set -o xtrace
+
+. $(dirname $0)/vars
+
+usage () {
+    cat <<EOF
+Usage: $0 [OPTIONS] PACKAGE
+
+    The following options may be given :
+        --help) usage ;;
+
+    The following packages may be given:
+        ${PACKAGES[@]}
+
+Example $0 ssm-client
+EOF
+        exit 1
+}
+
+copy_specs() {
+    local package=$1
+    local version=$2
+
+    pushd ${submodule_dir}/$package
+        if [ -n "${version}" ]; then
+            git checkout $version
+            sed "s/%{_version}/${version}/g" ${package}.spec > ${tmp_dir}/rpmbuild/SPECS/${package}.spec
+        else
+            cp -f ${package}.spec ${tmp_dir}/rpmbuild/SPECS/
+        fi
+    popd
+}
+
+build_srpm() {
+    local package=$1
+    local version=$2
+
+    rpmbuild -bs --define "debug_package %{nil}" --define "_topdir ${tmp_dir}/rpmbuild" ${tmp_dir}/rpmbuild/SPECS/${package}.spec
+
+    mkdir -p ${srpm_dir}
+    mv ${tmp_dir}/rpmbuild/SRPMS/${package}*.src.rpm ${srpm_dir}
+}
+
+build_generic_tarball() {
+    local package=$1
+    local version=$2
+    local tarball=
+
+    if [ -n "${version}" ]; then
+        tarball="${package}-${version}.tar.gz"
+    else
+        tarball="${package}.tar.gz"
+    fi
+
+    pushd ${submodule_dir}/$package
+        if [ -f "${tmp_dir}/rpmbuild/SOURCES/${tarball}" ]; then
+            echo "${tarball} exists, skipped"
+            return
+        else
+            if [ -n "${version}" ]; then
+                git checkout $version
+                tar czf ${tmp_dir}/rpmbuild/SOURCES/${tarball} ../${package}
+            else
+                tar czf ${tmp_dir}/rpmbuild/SOURCES/${tarball} ../${package}
+            fi
+        fi
+    popd
+}
+
+build_ssm_client_tarball() {
+    local name=$1
+    local version=$2
+    local sub_packages=(mongodb_exporter mysqld_exporter postgres_exporter proxysql_exporter qan-agent node_exporter ssm-client pid-watchdog)
+    local subdir=${tmp_dir}/rpmbuild/SOURCES/${name}
+
+    mkdir -p $subdir
+    for sub_packages in ${sub_packages[@]}; do
+        pushd ${submodule_dir}/$sub_packages
+            local tag=$(git tag -l --sort=-version:refname "v*" --merged | head -n 1)
+            if [ -f "${subdir}/${sub_packages}-${tag}.tar.gz" ]; then
+                echo "${sub_packages}-${tag}.tar.gz exists, skipped"
+            else
+                git checkout $tag
+                tar czf ${subdir}/${sub_packages}-${tag}.tar.gz ../${sub_packages}
+            fi
+        popd
+    done
+
+    pushd ${tmp_dir}/rpmbuild/SOURCES
+        tar -czf ${name}-${version}.tar.gz ${name}
+        rm -rf ${name}
+    popd
+}
+
+create_srpm() {
+    local package=$1
+    local version=
+
+    rm -rf ${tmp_dir}/rpmbuild/SRPMS/${package}*
+    mkdir -vp ${tmp_dir}/rpmbuild/{SOURCES,SPECS,BUILD,SRPMS,RPMS}
+
+    pushd ${submodule_dir}/$package
+        if [[ -d .git ]] || [[ -f .git ]]; then
+            version=$(git tag -l --sort=-version:refname "v*" --merged | head -n 1)
+        else
+            cp -ar * ${tmp_dir}/rpmbuild/SOURCES/
+            rm -f ${tmp_dir}/rpmbuild/SOURCES/${package}.spec
+        fi
+    popd
+
+    copy_specs $package $version
+    srpm_filename="$(rpmspec -q --qf %{name}-%{version}-%{release} ${tmp_dir}/rpmbuild/SPECS/${package}.spec).src.rpm"
+    if [ -f "${srpm_dir}/${srpm_filename}" ]; then
+        echo "${srpm_filename} exists, skipped"
+        return
+    fi
+
+    spectool -C ${tmp_dir}/rpmbuild/SOURCES/ -g ${tmp_dir}/rpmbuild/SPECS/${package}.spec
+
+    if [ -n "${version}" ]; then
+        if [ "$package" == "ssm-client" ]; then
+            build_ssm_client_tarball $package $version
+        else
+            build_generic_tarball $package $version
+        fi
+    fi
+
+    build_srpm $package $version
+}
+
+main() {
+    local package=
+
+    for arg do
+        val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
+        case "$arg" in
+            --help)         usage ;;
+            -*)             usage ;;
+            *)              package="$val" ;;
+        esac
+    done
+
+    if [ -z "$package" ]; then
+        usage
+    fi
+
+    create_srpm $package
+}
+
+main $@
