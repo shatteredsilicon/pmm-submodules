@@ -1,48 +1,49 @@
-FROM centos:7
-WORKDIR /root/rpmbuild/SOURCES
-COPY golang/* ./
+FROM rockylinux:8
 
-RUN yum install -y \
-                   yum-utils rpm-build rpmdevtools \
-                   epel-release pcre-devel glibc-static \
- && yum install -y golang
-RUN spectool -g  go-srpm-macros.spec
-RUN rpmbuild -ba go-srpm-macros.spec
-RUN spectool -g  golang.spec
-RUN rpmbuild -ba golang.spec
+RUN yum -y install epel-release nodejs
+RUN curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo | tee /etc/yum.repos.d/yarn.repo
+RUN yum -y install yum-utils rpmdevtools createrepo_c mock git golang yarn
 
+RUN echo $' \n\
+config_opts[\'dnf.conf\'] += """ \n\
+[ssm] \n\
+name=SSM \n\
+baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/RPMS/$basearch/ \n\
+gpgcheck=1 \n\
+enabled=1 \n\
+gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8 \n\
+ \n\
+[ssm-source] \n\
+name=SSM Source RPMs \n\
+baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/SRPMS \n\
+gpgcheck=1 \n\
+enabled=0 \n\
+gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8 \n\
+ \n\
+[ssm-debug] \n\
+name=SSM \n\
+baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/debug/$basearch/ \n\
+gpgcheck=1 \n\
+enabled=0 \n\
+gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8 \n\
+""" \n\
+' > /etc/mock/templates/ssm-8.tpl
 
-FROM centos:7
-RUN yum install -y gcc gcc-c++ \
-                   libtool libtool-ltdl \
-                   make cmake \
-                   git \
-                   pkgconfig \
-                   sudo \
-                   automake autoconf \
-                   rpmdevtools createrepo_c epel-release \
-                   yum-utils rpm-build \
-                   wget \
-                   epel-release
-RUN curl --silent --location https://rpm.nodesource.com/setup_10.x | bash - \
-&& yum install -y nodejs
+RUN echo $' \n\
+include(\'templates/rocky-8.tpl\') \n\
+include(\'templates/epel-8.tpl\') \n\
+include(\'templates/ssm-8.tpl\') \n\
+\n\
+config_opts[\'root\'] = \'ssm-8-'$(rpm --eval "%{_arch}")$'\' \n\
+config_opts[\'description\'] = \'SSM 8\' \n\
+config_opts[\'target_arch\'] = \''$(rpm --eval "%{_arch}")$'\' \n\
+config_opts[\'legal_host_arches\'] = (\''$(rpm --eval "%{_arch}")$'\',) \n\
+' > /etc/mock/ssm-8-$(rpm --eval "%{_arch}").cfg
 
-COPY --from=0 /root/rpmbuild/RPMS /var/cache/yum/RPMS
-RUN yum install -y \
-    /var/cache/yum/RPMS/*/golang-[123].*.rpm \
-    /var/cache/yum/RPMS/*/golang-bin-[123].*.rpm \
-    /var/cache/yum/RPMS/*/golang-src-[123].*.rpm \
-    /var/cache/yum/RPMS/*/go-srpm-macros-*.rpm
-RUN yum clean all && rm -rf /var/cache/yum
-
-RUN useradd builder -u 1000 -m -G users,wheel && \
-    echo "builder ALL=(ALL:ALL) NOPASSWD:ALL" >> /etc/sudoers && \
-    echo "# macros"                      >  /home/builder/.rpmmacros && \
-    echo "%_topdir    /home/builder/rpm" >> /home/builder/.rpmmacros && \
-    mkdir /home/builder/rpm && \
+RUN useradd builder -u 1000 -m -G users,wheel,mock && \
     chmod 755 /home/builder && \
     chown -R builder:builder /home/builder
 USER builder
 
-ENV FLAVOR=rpmbuild OS=centos DIST=el7
-WORKDIR /home/builder/rpm
+ENV FLAVOR=rpmbuild OS=rockylinux DIST=el8
+WORKDIR /home/builder
