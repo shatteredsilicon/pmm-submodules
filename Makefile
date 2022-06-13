@@ -6,8 +6,8 @@ submodules:
 server: submodules
 	./build/bin/build-server
 
-client: submodules
-	./build/bin/build-client
+rpmbuild-docker: submodules
+	./build/bin/build-rpmbuild-docker
 
 clean:
 	rm -rf tmp results

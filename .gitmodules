@@ -70,3 +70,7 @@
 	path = sources/pid-watchdog/src/github.com/percona/pid-watchdog
 	url = https://github.com/percona/pid-watchdog
 	branch = main
+[submodule "dep"]
+	path = build/rpmbuild-docker/dep
+	url = https://github.com/golang/dep.git
+	branch = master
