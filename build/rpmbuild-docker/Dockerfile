@@ -45,5 +45,11 @@ RUN useradd builder -u 1000 -m -G users,wheel,mock && \
     chown -R builder:builder /home/builder
 USER builder
 
+ENV GOPATH=/home/builder/go
+RUN mkdir -p ${GOPATH}/src/github.com/golang
+ADD dep ${GOPATH}/src/github.com/golang/dep
+RUN GO111MODULE=off go install -ldflags="-X main.version=v0.5.4" ${GOPATH}/src/github.com/golang/dep/cmd/dep
+ENV PATH=$PATH:${GOPATH}/bin
+
 ENV FLAVOR=rpmbuild OS=rockylinux DIST=el8
 WORKDIR /home/builder

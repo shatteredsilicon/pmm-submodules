@@ -14,7 +14,7 @@ rpms: submodules srpms
 server: submodules rpms
 	./build/bin/build-server
 
-rpmbuild-docker:
+rpmbuild-docker: submodules
 	./build/bin/build-rpmbuild-docker
 
 clean:

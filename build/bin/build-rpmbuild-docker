@@ -5,5 +5,6 @@ set -o xtrace
 
 . $(dirname $0)/vars
 
-root_dir=$(cd $(dirname $0)/../..; pwd -P)
-docker build --squash -t ${rpmbuild_docker_image}:latest ${root_dir}/build/rpmbuild-docker
+mkdir -p ${buildimg_build_dir}
+cp -r ${root_dir}/build/rpmbuild-docker/* ${buildimg_build_dir}/
+docker build --squash -t ${rpmbuild_docker_image}:latest ${buildimg_build_dir}/

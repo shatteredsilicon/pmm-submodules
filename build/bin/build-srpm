@@ -47,6 +47,7 @@ build_srpm() {
 build_generic_tarball() {
     local package=$1
     local version=$2
+    local workdir=$3
     local tarball=
 
     if [ -n "${version}" ]; then
@@ -55,19 +56,20 @@ build_generic_tarball() {
         tarball="${package}.tar.gz"
     fi
 
-    pushd ${submodule_dir}/$package
+    pushd ${submodule_dir}/${package}/${workdir}
         if [ -f "${tmp_dir}/rpmbuild/SOURCES/${tarball}" ]; then
             echo "${tarball} exists, skipped"
             return
         else
             if [ -n "${version}" ]; then
                 git checkout $version
-                tar czf ${tmp_dir}/rpmbuild/SOURCES/${tarball} ../${package}
-            else
-                tar czf ${tmp_dir}/rpmbuild/SOURCES/${tarball} ../${package}
             fi
+
+            pull_dep_in_place $package
         fi
     popd
+
+    tar -C ${submodule_dir} -czf ${tmp_dir}/rpmbuild/SOURCES/${tarball} ${package}
 }
 
 build_ssm_client_tarball() {
@@ -84,6 +86,9 @@ build_ssm_client_tarball() {
                 echo "${sub_packages}-${tag}.tar.gz exists, skipped"
             else
                 git checkout $tag
+
+                pull_dep_in_place $sub_packages
+
                 tar czf ${subdir}/${sub_packages}-${tag}.tar.gz ../${sub_packages}
             fi
         popd
@@ -93,6 +98,26 @@ build_ssm_client_tarball() {
         tar -czf ${name}-${version}.tar.gz ${name}
         rm -rf ${name}
     popd
+}
+
+pull_dep_in_place() {
+    local package=$1
+
+    if [[ -f Gopkg.toml ]]; then
+        export GOPATH=${tmp_dir}/go
+        package_path=${tmp_dir}/go/src/$(git_url_to_import_path $(git remote get-url origin))
+        mkdir -p $(dirname ${package_path})
+        cp -rfT ${submodule_dir}/$package ${package_path}
+        pushd ${package_path}
+            dep ensure
+        popd
+        cp -r ${package_path}/vendor ./
+    elif [[ -f go.mod ]]; then
+        go mod vendor
+    elif [[ -f package.json ]]; then
+        export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
+        npm install
+    fi
 }
 
 create_srpm() {
@@ -123,6 +148,10 @@ create_srpm() {
     if [ -n "${version}" ]; then
         if [ "$package" == "ssm-client" ]; then
             build_ssm_client_tarball $package $version
+        elif [ "$package" == "ssm-dashboards" ]; then
+            build_generic_tarball $package $version "pmm-app"
+        elif [ "$package" == "ssm-server" ]; then
+            build_generic_tarball $package $version "password-page"
         else
             build_generic_tarball $package $version
         fi
@@ -131,8 +160,52 @@ create_srpm() {
     build_srpm $package $version
 }
 
+check_commands() {
+    if ! command -v git &> /dev/null; then
+        echo "'git' is required to run this script"
+        exit 1
+    fi
+
+    if ! command -v rpmbuild &> /dev/null; then
+        echo "'rpmbuild' is required to run this script"
+        exit 1
+    fi
+
+    if ! command -v spectool &> /dev/null; then
+        echo "'spectool' is required to run this script"
+        exit 1
+    fi
+
+    if ! command -v go &> /dev/null; then
+        echo "'go' is required to run this script"
+        exit 1
+    fi
+
+    if ! command -v dep &> /dev/null; then
+        echo "'dep' is required to run this script"
+        exit 1
+    fi
+
+    if ! command -v npm &> /dev/null; then
+        echo "'npm' is required to run this script"
+        exit 1
+    fi
+}
+
+git_url_to_import_path() {
+    proto="$(echo $1 | grep :// | sed -e's,^\(.*://\).*,\1,g')"
+    url="$(echo ${1/$proto/})"
+    user="$(echo $url | grep @ | cut -d@ -f1)"
+    host="$(echo ${url/$user@/} | cut -d/ -f1 | sed 's/:/\//g')"
+    path="$(echo $url | grep / | cut -d/ -f2-)"
+
+    echo "${host}/${path%'.git'}"
+}
+
 main() {
     local package=
+
+    check_commands
 
     for arg do
         val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`

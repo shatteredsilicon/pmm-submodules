@@ -4,6 +4,7 @@ root_dir=$(cd $(dirname $0)/../..; pwd -P)
 ssm_version=${SSM_VERSION:-$(cat ${root_dir}/VERSION)}
 
 server_build_dir=${root_dir}/tmp/ssm-server
+buildimg_build_dir=${root_dir}/tmp/buildimg
 submodule_dir=${root_dir}/sources
 tmp_dir=${root_dir}/tmp
 result_dir=${root_dir}/results

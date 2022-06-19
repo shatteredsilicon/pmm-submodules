@@ -61,8 +61,17 @@ create_rpm() {
     build_rpm $package $version
 }
 
+check_commands() {
+    if ! command -v mock &> /dev/null; then
+        echo "'mock' is required to run this script"
+        exit 1
+    fi
+}
+
 main() {
     local package=
+
+    check_commands
 
     for arg do
         val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
