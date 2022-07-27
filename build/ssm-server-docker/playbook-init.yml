@@ -98,7 +98,7 @@
       mysql_user:
         name: qan-api
         host: localhost
-        password: '*5D6945E21E52CD547FBC205C676C7EFE950836B2'
+        password: '*0AA26B75B9CEB6A29B3202E2766D030228F5FC29'
         priv: 'ssm.*:ALL'
         encrypted: yes
         state: present
@@ -111,12 +111,6 @@
         priv: 'ssm.*:SELECT'
         encrypted: yes
         state: present
-
-    - name: qan-api                    | Fix DSN
-      replace:
-        dest: /etc/ssm-qan-api.conf
-        regexp: 'ss:ss'
-        replace: 'qan-api:5goldenfipar'
 
     - name: SSM                        | Wait for dashboards
       wait_for:
