@@ -62,3 +62,7 @@
 	path = sources/ssm-qan-app
 	url = https://github.com/shatteredsilicon/qan-app
 	branch = ssm-1.x
+[submodule "dep"]
+	path = build/rpmbuild-docker/dep
+	url = https://github.com/golang/dep.git
+	branch = master
