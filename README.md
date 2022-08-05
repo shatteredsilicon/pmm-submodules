@@ -1,3 +1,3 @@
-# pmm-submodules
+# ssm-submodules
 
 [![pullreminders](https://pullreminders.com/badge.svg)](https://pullreminders.com?ref=badge)
