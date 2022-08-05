@@ -1,4 +1,4 @@
-build/pmm-server-docker/RPMS/
+build/ssm-server-docker/RPMS/
 *.swp
 *~
 tmp/

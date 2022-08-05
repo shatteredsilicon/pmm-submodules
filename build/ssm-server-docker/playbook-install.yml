@@ -4,19 +4,15 @@
   gather_facts: yes
 
   tasks:
-    - name: Packages                   | Add Percona repository
+    - name: Packages                   | Add SSM repository
       when: ansible_os_family == 'RedHat'
-      yum:
-        name: https://repo.percona.com/yum/percona-release-latest.noarch.rpm 
-        state: installed
-
-    - name: Packages                   | Update OS
-      when: ansible_os_family == 'RedHat'
-      yum:
-        name: '*'
-        state: latest
-        exclude: 'ansible'
-        disablerepo: percona-release-x86_64
+      yum_repository:
+        name: ssm
+        description: SSM repo
+        baseurl: https://dl.shatteredsilicon.net/$releasever/ssm/RPMS/$basearch/
+        gpgkey: https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8
+        gpgcheck: yes
+        enabled: no
 
     - name: Packages                   | Install OS tools
       when: ansible_os_family == 'RedHat'
@@ -24,9 +20,16 @@
       with_items:
         - screen
         - yum-utils
-        - yum-cron
         - supervisor
         - logrotate
+        - python2-pip
+        - rpm-cron
+
+    - name: Packages                   | Install EL6 or EL7 tools
+      when: ansible_os_family == 'RedHat' and (ansible_distribution_major_version == "6" or ansible_distribution_major_version == "7")
+      yum: name={{ item }} state=installed
+      with_items:
+        - yum-cron
 
     - name: cloud-init                 | Create dirs
       file: path={{ item }} state=directory
@@ -35,41 +38,39 @@
         - /var/lib/cloud/scripts/per-boot
 
     - name: cloud-init                 | Create dirs
-      file: path={{ item }} state=directory owner=pmm
+      file: path={{ item }} state=directory owner=ssm
       with_items:
         - /opt/prometheus/data
         - /opt/consul-data
 
     - name: cloud-init                 | Configure yum-cron
+      when: ansible_os_family == 'RedHat' and (ansible_distribution_major_version == "6" or ansible_distribution_major_version == "7")
       replace:
         dest: /etc/yum/yum-cron-hourly.conf
         regexp: 'update_cmd = default'
         replace: 'update_cmd = minimal-security'
 
     - name: cloud-init                 | Configure yum-cron
+      when: ansible_os_family == 'RedHat' and (ansible_distribution_major_version == "6" or ansible_distribution_major_version == "7")
       replace:
         dest: /etc/yum/yum-cron.conf
         regexp: 'update_cmd = default'
         replace: 'update_cmd = minimal-security'
 
-    - name: Percona Server for MySQL   | Install Percona Client
+    - name: Percona Server for MySQL   | Install Python Modules
       when: ansible_os_family == 'RedHat'
-      yum: name={{ item }} state=installed
-      with_items:
-        - Percona-Server-client-55
+      pip:
+        name:
+          - PyMySQL
+        extra_args: --user
 
-    - name: Percona Server for MySQL   | Remove MariaDB Client
+    - name: Percona Server for MySQL   | Install Python 2 Modules
       when: ansible_os_family == 'RedHat'
-      yum: name={{ item }} state=absent
-      with_items:
-        - mariadb-libs
-
-    - name: Percona Server for MySQL   | Install Percona Server
-      when: ansible_os_family == 'RedHat'
-      yum: name={{ item }} state=installed
-      with_items:
-        - Percona-Server-server-55
-        - MySQL-python
+      pip:
+        name:
+          - requests
+        extra_args: --user
+        executable: pip2
 
     - name: Percona Server for MySQL   | stat /root/.my.cnf
       stat: path=/root/.my.cnf
@@ -94,30 +95,30 @@
         dest: /var/lib/cloud/scripts/per-once/init-mysql-password
         mode: 0755
 
-    - name: PMM                        | Create grafana group
+    - name: SSM                        | Create grafana group
       group:
-        gid: 996
+        gid: 472
         name: grafana
 
-    - name: PMM                        | Create grafana user
+    - name: SSM                        | Create grafana user
       user:
-        uid: 996
+        uid: 472
         name: grafana
         group: grafana
         home: /etc/grafana
         shell: /sbin/nologin
 
-    - name: PMM                        | Add PMM Server YUM repository
-      when: ansible_os_family == 'RedHat'
-      yum_repository:
-        name: pmm
-        description: PMM Server YUM repository - x86_64
-        baseurl: https://repo.percona.com/pmm/7/RPMS/x86_64/
-        gpgcheck: yes
-        enabled: no
-        gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-Percona
+    # - name: SSM                        | Add SSM Server YUM repository
+    #   when: ansible_os_family == 'RedHat'
+    #   yum_repository:
+    #     name: pmm
+    #     description: PMM Server YUM repository - x86_64
+    #     baseurl: https://repo.percona.com/pmm/7/RPMS/x86_64/
+    #     gpgcheck: yes
+    #     enabled: no
+    #     gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-Percona
 
-    - name: PMM                        | Add local YUM repository
+    - name: SSM                        | Add local YUM repository
       when: ansible_os_family == 'RedHat'
       yum_repository:
         name: local
@@ -126,28 +127,29 @@
         gpgcheck: no
         enabled: no
 
-    - name: PMM                        | Install RPMs
+    - name: SSM                        | Install RPMs
       when: ansible_os_family == 'RedHat'
       yum: name={{ item }} state=installed enablerepo=local
       with_items:
         - nginx
-        - percona-consul
-        - percona-grafana
-        - percona-prometheus
-        - percona-prometheus1
-        - percona-orchestrator
-        - percona-qan-api
-        - percona-qan-app
-        - percona-toolkit-3.0.10
-        - percona-dashboards
-        - pmm-server
-        - pmm-client
-        - pmm-manage
-        - pmm-managed
-        - pmm-update
+        - consul
+        - grafana
+        - prometheus
+        - orchestrator
+        - ssm-qan-api
+        - ssm-qan-app
+        - percona-toolkit
+        - ssm-dashboards
+        - ssm-server
+        - ssm-client
+        - ssm-manage
+        - ssm-managed
+        - ssm-update
         - rds_exporter
+        - mariadb
+        - mariadb-server
 
-    - name: PMM                        | Fix nginx config
+    - name: SSM                        | Fix nginx config
       replace:
         dest: /etc/nginx/nginx.conf
         regexp: '^(\s*)listen'
@@ -228,7 +230,7 @@
         dest: /etc/grafana/grafana.ini
         section: snapshots
         option: external_enabled
-        value: true
+        value: false
 
     - name: Grafana                    | Set snapshot server
       when: not grafana_db.stat.exists
@@ -236,7 +238,7 @@
         dest: /etc/grafana/grafana.ini
         section: snapshots
         option: external_snapshot_url
-        value: https://snapshots-g504.percona.com
+        value: http://127.0.0.1
 
     - name: Grafana                    | Set snapshot server
       when: not grafana_db.stat.exists
@@ -244,7 +246,7 @@
         dest: /etc/grafana/grafana.ini
         section: snapshots
         option: external_snapshot_name
-        value: Share with Percona
+        value: Share with Shattered Silicon
 
     - name: supervisor                 | Fix credentials
       ini_file:
