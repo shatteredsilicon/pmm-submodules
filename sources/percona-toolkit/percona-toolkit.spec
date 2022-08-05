@@ -6,7 +6,7 @@
 %global project                 percona
 %global repo                    percona-toolkit
 %global import_path             %{provider}.%{provider_tld}/%{project}/%{repo}
-%global percona_toolkit_version 3.3.1
+%global percona_toolkit_version 3.4.0
 
 Name:           %{repo}
 Summary:        Percona Toolkit
@@ -15,8 +15,7 @@ Release:        2%{?dist}
 License:        GPL-2.0
 Vendor:         Percona LLC
 URL:            https://percona.com
-Source0:        https://%{import_path}/archive/v%{percona_toolkit_version}/%{repo}-v%{percona_toolkit_version}.tar.gz
-Source1:        percona-toolkit-vendor-v%{percona_toolkit_version}.tar.gz
+Source0:        https://%{import_path}/archive/%{percona_toolkit_version}/%{repo}-%{percona_toolkit_version}.tar.gz
 BuildRequires:  golang
 
 %description
@@ -24,7 +23,6 @@ Percona Toolkit
 
 %prep
 %setup -q -n %{name}-%{percona_toolkit_version}
-%setup -q -T -D -a 1 -n %{repo}-%{version}
 
 %build
 mkdir -p %{_GOPATH}/bin

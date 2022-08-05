@@ -51,7 +51,6 @@ License:        ASL 2.0
 URL:            https://%{provider_prefix}
 Source0:        https://%{provider_prefix}/archive/%{prometheus_tag}/%{repo}-%{prometheus_tag}.tar.gz
 Source1:        %{repo}.service
-Source2:	prometheus-vendor-v%{version}.tar.gz
 
 %if 0%{?fedora} || 0%{?rhel} == 7
 BuildRequires: systemd
@@ -177,7 +176,6 @@ providing packages with %{import_path} prefix.
 %prep
 %setup -q -n %{repo}-%{version}
 #patch0 -p1
-%setup -q -T -D -a 2 -n %{repo}-%{version}
 
 %build
 # If gccgo_arches does not fit or is not defined fall through to golang

@@ -21,14 +21,11 @@ License:        ASL 2.0
 URL:            https://%{import_path}
 Source0:        https://%{import_path}/archive/%{commit}/%{repo}-%{shortcommit}.tar.gz
 Source1:        https://github.com/sass/node-sass/archive/v%{node_sass_version}/node-sass-v%{node_sass_version}.tar.gz
-Source2:        grafana-node_modules-v5.4.5.tar.gz
-Source3:        grafana-server.service
-Source4:        ssm-favicon.ico
-Source5:        node-sass-node_modules-v%{node_sass_version}.tar.gz
+Source2:        grafana-server.service
+Source3:        ssm-favicon.ico
 Patch0:         grafana-5.4.5-share-panel.patch
 Patch1:         grafana-5.1.3-refresh-auth.patch
 Patch2:         grafana-5.4.5-change-icon.patch
-Patch3:         0001-NPM-audit-fix.patch
 
 BuildRequires:  phantomjs
 BuildRequires:  golang >= 1.7.3
@@ -53,12 +50,9 @@ Graphite, InfluxDB & OpenTSDB.
 %prep
 %setup -q
 %setup -q -T -D -a 1 -n %{repo}-%{version}
-%setup -q -T -D -a 5 -n %{repo}-%{version}/node-sass-%{node_sass_version}
-%setup -q -T -D -a 2 -n %{repo}-%{version}
 %patch0 -p 1
 %patch1 -p 1
 %patch2 -p 0
-%patch3 -p 1
 
 rm -rf Godeps
 
@@ -106,7 +100,7 @@ else
  cp -rpav bin/* tmp/bin/
 fi
 
-install -m 644 %{SOURCE4} %{buildroot}/usr/share/grafana/public/img/ssm-favicon.ico
+install -m 644 %{SOURCE3} %{buildroot}/usr/share/grafana/public/img/ssm-favicon.ico
 
 install -d -p %{buildroot}%{_sbindir}
 cp tmp/bin/%{repo}-server %{buildroot}%{_sbindir}/
@@ -119,7 +113,7 @@ mv tmp/conf/ldap.toml %{buildroot}%{_sysconfdir}/%{repo}/
 
 %if 0%{?fedora} || 0%{?rhel} == 7
 mkdir -p %{buildroot}/usr/lib/systemd/system
-install -p -m 0644 %{SOURCE3} %{buildroot}/usr/lib/systemd/system/
+install -p -m 0644 %{SOURCE2} %{buildroot}/usr/lib/systemd/system/
 %else
 mkdir -p %{buildroot}%{_initddir}/
 install -p -m 0644 packaging/rpm/init.d/grafana-server %{buildroot}%{_initddir}/
