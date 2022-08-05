@@ -1,0 +1,92 @@
+#!/bin/bash
+
+set -o errexit
+set -o xtrace
+
+. $(dirname $0)/vars
+
+usage () {
+    cat <<EOF
+Usage: $0 [OPTIONS] PACKAGE
+
+    The following options may be given :
+        --help) usage ;;
+
+    The following packages may be given:
+        ${PACKAGES[@]}
+
+Example $0 ssm-client
+EOF
+        exit 1
+}
+
+build_rpm() {
+    local package=$1
+    local version=$2
+
+    if [ -n "${version}" ]; then
+        mock -r ssm-8-$(rpm --eval "%{_arch}") --resultdir ${rpm_dir} --rebuild ${srpm_dir}/${package}-${version}*.src.rpm
+    else
+        mock -r ssm-8-$(rpm --eval "%{_arch}") --resultdir ${rpm_dir} --rebuild ${srpm_dir}/${package}*.src.rpm
+    fi
+
+    rm -f ${rpm_dir}/${package}*.src.rpm ${rpm_dir}/*.log
+}
+
+create_rpm() {
+    local package=$1
+    local version=
+
+    mkdir -p ${rpm_dir}
+
+    pushd ${submodule_dir}/$package
+        if [[ -d .git ]] || [[ -f .git ]]; then
+            version=$(git tag -l --sort=-version:refname "v*" --merged | head -n 1)
+        fi
+    popd
+
+    local rpm_filename=
+    if [ -n "${version}" ]; then
+        rpm_filename="$(rpmquery ${srpm_dir}/${package}-${version}*.src.rpm).rpm"
+    else
+        rpm_filename="$(rpmquery ${srpm_dir}/${package}*.src.rpm).rpm"
+    fi
+
+    if [ -f "${rpm_dir}/${rpm_filename}" ]; then
+        echo "${rpm_filename} exists, skipped"
+        return
+    fi
+
+    rm -f ${rpm_dir}/${package}*
+    build_rpm $package $version
+}
+
+check_commands() {
+    if ! command -v mock &> /dev/null; then
+        echo "'mock' is required to run this script"
+        exit 1
+    fi
+}
+
+main() {
+    local package=
+
+    check_commands
+
+    for arg do
+        val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
+        case "$arg" in
+            --help)         usage ;;
+            -*)             usage ;;
+            *)              package="$val" ;;
+        esac
+    done
+
+    if [ -z "$package" ]; then
+        usage
+    fi
+
+    create_rpm $package
+}
+
+main $@

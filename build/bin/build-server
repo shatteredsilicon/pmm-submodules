@@ -5,28 +5,62 @@ set -o xtrace
 
 . $(dirname $0)/vars
 
-# build pmm-client
-pmm_version=$(cat ${root_dir}/VERSION) ${bin_dir}/build-client
-pmm_version=$(cat ${root_dir}/VERSION) ${bin_dir}/build-client-srpm
-pmm_version=$(cat ${root_dir}/VERSION) ${bin_dir}/build-client-rpm
-mkdir -p ${rpms_dir}/
-cp ${root_dir}/results/rpm/*.rpm ${rpms_dir}/
+usage () {
+    cat <<EOF
+Usage: $0 [OPTIONS]
 
-# 1st-party
-${bin_dir}/build-server-rpm percona-dashboards grafana-dashboards
-${bin_dir}/build-server-rpm pmm-manage
-${bin_dir}/build-server-rpm pmm-managed
-${bin_dir}/build-server-rpm percona-qan-api qan-api
-${bin_dir}/build-server-rpm percona-qan-app qan-app
-${bin_dir}/build-server-rpm pmm-server
-${bin_dir}/build-server-rpm pmm-update
+    The following options may be given:
+        --help) usage ;;
 
-# 3rd-party
-${bin_dir}/build-server-rpm consul
-${bin_dir}/build-server-rpm orchestrator
-${bin_dir}/build-server-rpm rds_exporter
-${bin_dir}/build-server-rpm prometheus
-${bin_dir}/build-server-rpm prometheus1
-${bin_dir}/build-server-rpm grafana
+Example $0 ssm-client ssm-dashboards
+EOF
+        exit 1
+}
 
-${bin_dir}/build-server-docker
+build() {
+    mkdir -p ${server_build_dir}/RPMS
+    chmod 777 ${server_build_dir}/RPMS
+    cp -r ${rpm_dir}/* ${server_build_dir}/RPMS
+    cp ${root_dir}/build/ssm-server-docker/* ${server_build_dir}/
+
+    docker run --rm -v ${server_build_dir}/RPMS:/home/builder/RPMS ${rpmbuild_docker_image} sh -c "
+        createrepo_c --update /home/builder/RPMS
+    "
+    for rpm in $(cd ${rpm_dir}; find . -name '*.rpm'); do
+        echo $rpm
+        rpm_name=$(
+            docker run --rm -v ${rpm_dir}:/home/builder/rpm -w /home/builder/rpm ${rpmbuild_docker_image} \
+                rpm -q --qf '%{name}' -p $rpm
+        )
+        rpm_fullname=$(
+            docker run --rm -v ${rpm_dir}:/home/builder/rpm -w /home/builder/rpm ${rpmbuild_docker_image} \
+                rpm -q -p $rpm
+        )
+        sed -i -e "s/- ${rpm_name}$/- ${rpm_fullname}/" ${server_build_dir}/playbook-install.yml
+    done
+
+    if [ -z "${DOCKER_TAG}" ]; then
+        DOCKER_TAG=shatteredsilicon/ssm-server-fb:${ssm_version}
+    fi
+    docker build --squash --no-cache -t ${DOCKER_TAG} ${server_build_dir}/
+
+    if [ -n "${PUSH_DOCKER}" ]; then
+        docker push ${DOCKER_TAG}
+    fi
+}
+
+main() {
+    declare -a TMP_PACKAGES
+
+    for arg do
+        val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
+        case "$arg" in
+            *)              usage ;;
+        esac
+    done
+
+    VERSION=${VERSION:-$(cd ${root_dir}; git tag -l --sort=-version:refname "v*" --merged | head -n 1)}
+    build
+}
+
+main $@

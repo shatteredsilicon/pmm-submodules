@@ -1,75 +1,67 @@
-[submodule "pmm-client"]
-	path = sources/pmm-client/src/github.com/percona/pmm-client
-	url = https://github.com/percona/pmm-client.git
-	branch = master
+[submodule "ssm-client"]
+	path = sources/ssm-client
+	url = https://github.com/shatteredsilicon/ssm-client
+	branch = ssm-1.x
 [submodule "qan-agent"]
-	path = sources/qan-agent/src/github.com/percona/qan-agent
-	url = https://github.com/percona/qan-agent.git
-	branch = master
+	path = sources/qan-agent
+	url = https://github.com/shatteredsilicon/qan-agent
+	branch = ssm-1.x
 [submodule "node_exporter"]
-	path = sources/node_exporter/src/github.com/prometheus/node_exporter
-	url = https://github.com/percona/node_exporter.git
-	branch = pmm-1.x
+	path = sources/node_exporter
+	url = https://github.com/shatteredsilicon/node_exporter
+	branch = ssm-1.x
 [submodule "mysqld_exporter"]
-	path = sources/mysqld_exporter/src/github.com/percona/mysqld_exporter
-	url = https://github.com/percona/mysqld_exporter.git
-	branch = pmm-1.x
+	path = sources/mysqld_exporter
+	url = https://github.com/shatteredsilicon/mysqld_exporter
+	branch = ssm-1.x
 [submodule "mongodb_exporter"]
-	path = sources/mongodb_exporter/src/github.com/percona/mongodb_exporter
-	url = https://github.com/percona/mongodb_exporter.git
-	branch = pmm-1.x
+	path = sources/mongodb_exporter
+	url = https://github.com/shatteredsilicon/mongodb_exporter
+	branch = ssm-1.x
 [submodule "proxysql_exporter"]
-	path = sources/proxysql_exporter/src/github.com/percona/proxysql_exporter
-	url = https://github.com/percona/proxysql_exporter.git
-	branch = pmm-1.x
-[submodule "percona-toolkit"]
-	path = sources/percona-toolkit/src/github.com/percona/percona-toolkit
-	url = https://github.com/percona/percona-toolkit.git
-	branch = release-3.0.10
-[submodule "pmm-manage"]
-	path = sources/pmm-manage/src/github.com/percona/pmm-manage
-	url = https://github.com/percona/pmm-manage
-	branch = master
-[submodule "pmm-managed"]
-	path = sources/pmm-managed/src/github.com/percona/pmm-managed
-	url = https://github.com/percona/pmm-managed
-	branch = pmm-1.x
-[submodule "qan-api"]
-	path = sources/qan-api/src/github.com/percona/qan-api
-	url = https://github.com/percona/qan-api
-	branch = master
-[submodule "qan-app"]
-	path = sources/qan-app/src/github.com/percona/qan-app
-	url = https://github.com/percona/qan-app
-	branch = master
-[submodule "pmm-update"]
-	path = sources/pmm-update
-	url = https://github.com/percona/pmm-update
-	branch = pmm-1.x
-[submodule "pmm-server"]
-	path = sources/pmm-server
-	url = https://github.com/percona/pmm-server
-	branch = pmm-1.x
-[submodule "pmm-server-packaging"]
-	path = sources/pmm-server-packaging
-	url = https://github.com/percona/pmm-server-packaging
-	branch = master
-[submodule "grafana-dashboards"]
-	path = sources/grafana-dashboards
-	url = https://github.com/percona/grafana-dashboards
-	branch = pmm-1.x
+	path = sources/proxysql_exporter
+	url = https://github.com/shatteredsilicon/proxysql_exporter
+	branch = ssm-1.x
+[submodule "ssm-manage"]
+	path = sources/ssm-manage
+	url = https://github.com/shatteredsilicon/ssm-manage
+	branch = ssm-1.x
+[submodule "ssm-managed"]
+	path = sources/ssm-managed
+	url = https://github.com/shatteredsilicon/ssm-managed
+	branch = ssm-1.x
+[submodule "ssm-update"]
+	path = sources/ssm-update
+	url = https://github.com/shatteredsilicon/ssm-update
+	branch = ssm-1.x
+[submodule "ssm-server"]
+	path = sources/ssm-server
+	url = https://github.com/shatteredsilicon/ssm-server
+	branch = ssm-1.x
 [submodule "rds_exporter"]
-	path = sources/rds_exporter/src/github.com/percona/rds_exporter
-	url = https://github.com/percona/rds_exporter
-	branch = pmm-1.x
+	path = sources/rds_exporter
+	url = https://github.com/shatteredsilicon/rds_exporter
+	branch = ssm-1.x
 [submodule "postgres_exporter"]
-	path = sources/postgres_exporter/src/github.com/percona/postgres_exporter
-	url = https://github.com/percona/postgres_exporter
-	branch = pmm-1.x
+	path = sources/postgres_exporter
+	url = https://github.com/shatteredsilicon/postgres_exporter
+	branch = ssm-1.x
 [submodule "pid-watchdog"]
-	path = sources/pid-watchdog/src/github.com/percona/pid-watchdog
-	url = https://github.com/percona/pid-watchdog
-	branch = main
+	path = sources/pid-watchdog
+	url = https://github.com/shatteredsilicon/pid-watchdog
+	branch = ssm-1.x
+[submodule "ssm-dashboards"]
+	path = sources/ssm-dashboards
+	url = https://github.com/shatteredsilicon/grafana-dashboards
+	branch = ssm-1.x
+[submodule "ssm-qan-api"]
+	path = sources/ssm-qan-api
+	url = https://github.com/shatteredsilicon/qan-api
+	branch = ssm-1.x
+[submodule "ssm-qan-app"]
+	path = sources/ssm-qan-app
+	url = https://github.com/shatteredsilicon/qan-app
+	branch = ssm-1.x
 [submodule "dep"]
 	path = build/rpmbuild-docker/dep
 	url = https://github.com/golang/dep.git
