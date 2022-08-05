@@ -1,13 +1,21 @@
-all: client server
+all: server
 
 submodules:
-	git submodule update --init --remote
+	git submodule update --init --remote --force
+	git submodule foreach --recursive 'git clean -f -d'
+	git submodule foreach --recursive 'git fetch origin --tags -f'
 
-server: submodules
+srpms: submodules
+	./build/bin/build-srpms $(packages)
+
+rpms: submodules srpms
+	./build/bin/build-rpms $(packages)
+
+server: submodules rpms
 	./build/bin/build-server
 
-client: submodules
-	./build/bin/build-client
+rpmbuild-docker: submodules
+	./build/bin/build-rpmbuild-docker
 
 clean:
 	rm -rf tmp results
