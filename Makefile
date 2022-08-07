@@ -17,5 +17,8 @@ server: submodules rpms
 rpmbuild-docker: submodules
 	./build/bin/build-rpmbuild-docker
 
+show-vulnerabilities:
+	./build/bin/show-vulnerabilities
+
 clean:
 	rm -rf tmp results

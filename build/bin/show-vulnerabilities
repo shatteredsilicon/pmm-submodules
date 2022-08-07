@@ -1,0 +1,43 @@
+#!/bin/bash
+
+set -o errexit
+
+. $(dirname $0)/vars
+
+usage () {
+    cat <<EOF
+Usage: $0
+Example $0
+EOF
+        exit 1
+}
+
+check_commands() {
+    if ! command -v jq &> /dev/null; then
+        echo "'jq' is required to run this script"
+        exit 1
+    fi
+}
+
+main() {
+    for arg do
+        val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
+        case "$arg" in
+            --help)         usage ;;
+            *)             usage ;;
+        esac
+    done
+
+    for filename in ${logs_dir}/vulnerability-diffs/*.json; do
+        if [ "$(head -c3 ${filename})" = $'[\n]' ]; then
+            continue
+        fi
+        name=$(basename "${filename}")
+        echo "---------------------------------------$(echo ${name} | sed -E -e 's/-(go|node)\.json$//g')---------------------------------------"
+        cat "$filename"
+        echo ""
+        echo ""
+    done
+}
+
+main $@

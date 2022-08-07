@@ -75,21 +75,21 @@ build_generic_tarball() {
 build_ssm_client_tarball() {
     local name=$1
     local version=$2
-    local sub_packages=(mongodb_exporter mysqld_exporter postgres_exporter proxysql_exporter qan-agent node_exporter ssm-client pid-watchdog)
+    local sub_packages=(mongodb_exporter mysqld_exporter postgres_exporter proxysql_exporter pid-watchdog qan-agent node_exporter ssm-client)
     local subdir=${tmp_dir}/rpmbuild/SOURCES/${name}
 
     mkdir -p $subdir
-    for sub_packages in ${sub_packages[@]}; do
-        pushd ${submodule_dir}/$sub_packages
+    for sub_package in ${sub_packages[@]}; do
+        pushd ${submodule_dir}/$sub_package
             local tag=$(git tag -l --sort=-version:refname "v*" --merged | head -n 1)
-            if [ -f "${subdir}/${sub_packages}-${tag}.tar.gz" ]; then
-                echo "${sub_packages}-${tag}.tar.gz exists, skipped"
+            if [ -f "${subdir}/${sub_package}-${tag}.tar.gz" ]; then
+                echo "${sub_package}-${tag}.tar.gz exists, skipped"
             else
                 git checkout $tag
 
-                pull_dep_in_place $sub_packages
+                pull_dep_in_place $sub_package
 
-                tar czf ${subdir}/${sub_packages}-${tag}.tar.gz ../${sub_packages}
+                tar czf ${subdir}/${sub_package}-${tag}.tar.gz ../${sub_package}
             fi
         popd
     done
@@ -100,23 +100,321 @@ build_ssm_client_tarball() {
     popd
 }
 
+build_3rd_tallbar() {
+    local package=$1
+    local dep_src=$2
+    local dep_dest=$3
+    local ignore_error=$4
+
+    pushd ${tmp_dir}/rpmbuild/SOURCES
+        local tarball=$(find . -maxdepth 1 -type f -iname "${package}*.tar.gz" | head -1)
+        if [ -n "${tarball}" ]; then
+            tar -zxf ${tarball}
+            local package_dir=$(find . -maxdepth 1 -type d -iname "${package}*" | head -1)
+            if [ -n "${dep_src}" ]; then
+                cp ${dep_src} ${package_dir}/${dep_dest}
+            fi
+            pushd ${package_dir}
+                pull_dep_in_place $package $ignore_error
+            popd
+            rm -f ${tarball}
+            tar -czf ${tarball} ${package_dir}
+        fi
+    popd
+}
+
 pull_dep_in_place() {
     local package=$1
+    local ignore_error=$2
 
-    if [[ -f Gopkg.toml ]]; then
+    # make sure logs dir exists
+    mkdir -p ${logs_dir}/vulnerability-diffs
+
+    if [[ -f yarn.lock ]]; then
+        export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
+
+        check_yarn_vulnerabilities $package
+        if [ -n "${ignore_error}" ]; then
+            yarn || true
+        else
+            yarn
+        fi
+    elif [[ -f Gopkg.toml ]]; then
         export GOPATH=${tmp_dir}/go
+        rm -rf ${tmp_dir}/go/pkg/dep/sources
         package_path=${tmp_dir}/go/src/$(git_url_to_import_path $(git remote get-url origin))
         mkdir -p $(dirname ${package_path})
         cp -rfT ${submodule_dir}/$package ${package_path}
         pushd ${package_path}
-            dep ensure
+            check_dep_vulnerabilities $package
+            GO111MODULE=off dep ensure
         popd
         cp -r ${package_path}/vendor ./
     elif [[ -f go.mod ]]; then
-        go mod vendor
+        if [ -f go.sum ]; then
+            check_mod_vulnerabilities $package
+        fi
+        GO111MODULE=on go mod vendor
     elif [[ -f package.json ]]; then
         export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
+
+        if [ -f package-lock.json ]; then
+            check_npm_vulnerabilities $package
+        fi
         npm install
+    fi
+}
+
+check_dep_vulnerabilities() {
+    set +o errexit
+    local package=$1
+
+    if ! command -v nancy &> /dev/null; then
+        echo "Ignore checking vulnerabilities of ${package}, 'nancy' is required"
+        set -o errexit
+        return
+    fi
+
+    if [ ! -f Gopkg.lock ]; then
+        echo "Ignore checking vulnerabilities of ${package}, original Gopkg.lock file doesn't exist"
+        set -o errexit
+        return
+    fi
+
+    mv -f Gopkg.lock Gopkg.lock.ori
+    GO111MODULE=off dep ensure
+    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-new
+    mv -f Gopkg.lock.ori Gopkg.lock
+    rm -rf vendor
+    GO111MODULE=off dep ensure
+    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-ori
+
+    set +o xtrace
+    gen_go_vulnerabilities ${package} /tmp/${package}-dep-vulnerability-ori /tmp/${package}-dep-vulnerability-new
+    set -o xtrace
+
+    set -o errexit
+}
+
+check_mod_vulnerabilities() {
+    set +o errexit
+    local package=$1
+
+    if ! command -v nancy &> /dev/null; then
+        echo "Ignore checking vulnerabilities of ${package}, 'nancy' is required"
+        set -o errexit
+        return
+    fi
+
+    if [ ! -f go.sum ]; then
+        echo "Ignore checking vulnerabilities of ${package}, original go.sum file doesn't exist"
+        set -o errexit
+        return
+    fi
+
+    mv -f go.sum go.sum.ori
+    GO111MODULE=on go mod vendor
+    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > /tmp/${package}-mod-vulnerability-new
+    mv -f go.sum.ori go.sum
+    rm -rf vendor
+    GO111MODULE=on go mod vendor
+    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > /tmp/${package}-mod-vulnerability-ori
+
+    set +o xtrace
+    gen_go_vulnerabilities ${package} /tmp/${package}-mod-vulnerability-ori /tmp/${package}-mod-vulnerability-new
+    set -o xtrace
+
+    set -o errexit
+}
+
+check_npm_vulnerabilities() {
+    set +o errexit
+    local package=$1
+
+    if [ ! -f package-lock.json ]; then
+        echo "Ignore checking vulnerabilities of ${package}, original package-lock.json file not exists"
+        set -o errexit
+        return
+    fi
+
+    yarn import
+    yarn audit --json > /tmp/${package}-npm-vulnerability-ori
+    rm -f yarn.lock
+    yarn generate-lock-entry
+    yarn audit --json > /tmp/${package}-npm-vulnerability-new
+    rm -f yarn.lock
+
+    set +o xtrace
+    gen_node_vulnerabilities ${package} /tmp/${package}-npm-vulnerability-ori /tmp/${package}-npm-vulnerability-new
+    set -o xtrace
+
+    set -o errexit
+}
+
+check_yarn_vulnerabilities() {
+    set +o errexit
+    local package=$1
+
+    if [ ! -f yarn.lock ]; then
+        echo "Ignore checking vulnerabilities of ${package}, original yarn.lock file not exists"
+        set -o errexit
+        return
+    fi
+
+    yarn audit --json > /tmp/${package}-yarn-vulnerability-ori
+    mv -f yarn.lock yarn.lock.orig
+    yarn install --mode update-lockfile
+    yarn audit --json > /tmp/${package}-yarn-vulnerability-new
+    mv -f yarn.lock.orig yarn.lock
+
+    set +o xtrace
+    gen_node_vulnerabilities ${package} /tmp/${package}-yarn-vulnerability-ori /tmp/${package}-yarn-vulnerability-new
+    set -o xtrace
+
+    set -o errexit
+}
+
+gen_go_vulnerabilities() {
+    local package=$1
+    local ori_file=$2
+    local new_file=$3
+
+    echo $'[\n]' > "${logs_dir}/vulnerability-diffs/${package}-go.json"
+
+    i=0
+    vulnerable_length=$(cat "${new_file}" | jq ".vulnerable | length")
+    while [ $i -lt ${vulnerable_length} ]; do
+        vulnerable=$(cat "${new_file}" | jq ".vulnerable[${i}]")
+        if [ -z "$vulnerable" ] || [ "$vulnerable" = "null" ]; then
+            i=$((i+1))
+            continue
+        fi
+
+        path=$(echo "${vulnerable}" | jq ".Coordinates")
+        j=0
+        vulnerability_length=$(echo "${vulnerable}" | jq ".Vulnerabilities | length")
+        while [ $j -lt $vulnerability_length ]; do
+            vulnerability=$(echo "${vulnerable}" | jq ".Vulnerabilities[${j}]")
+            if [ -z "$vulnerability" ] || [ "$vulnerability" = "null" ]; then
+                j=$((j+1))
+                continue
+            fi
+
+            id=$(echo "${vulnerability}" | jq ".ID")
+            if go_vulnerability_exists "$ori_file" $id; then
+                j=$((j+1))
+                continue
+            fi
+
+            title=$(echo "${vulnerability}" | jq ".Title")
+            desc=$(echo "${vulnerability}" | jq ".Description")
+            cvss_score=$(echo "${vulnerability}" | jq ".CvssScore")
+            ref=$(echo "${vulnerability}" | jq ".Reference")
+
+            insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${logs_dir}/vulnerability-diffs/${package}-go.json"
+            j=$((j+1))
+        done
+
+        i=$((i+1))
+    done
+}
+
+go_vulnerability_exists() {
+    local file=$1
+    local id=$2
+
+    i=0
+    vulnerable_length=$(cat "${file}" | jq ".vulnerable | length")
+    while [ $i -lt ${vulnerable_length} ]; do
+        vulnerable=$(cat "${file}" | jq ".vulnerable[${i}]")
+        if [ -z "$vulnerable" ] || [ "$vulnerable" = "null" ]; then
+            i=$((i+1))
+            continue
+        fi
+
+        j=0
+        vulnerability_length=$(echo "${vulnerable}" | jq ".Vulnerabilities | length")
+        while [ $j -lt $vulnerability_length ]; do
+            vulnerability=$(echo "${vulnerable}" | jq ".Vulnerabilities[${j}]")
+            if [ -z "$vulnerability" ] || [ "$vulnerability" = "null" ]; then
+                j=$((j+1))
+                continue
+            fi
+
+            match_id=$(echo "${vulnerability}" | jq ".ID")
+            if [ $id = $match_id ]; then
+                return 0
+            fi
+
+            j=$((j+1))
+        done
+
+        i=$((i+1))
+    done
+
+    return 1
+}
+
+gen_node_vulnerabilities() {
+    local package=$1
+    local ori_file=$2
+    local new_file=$3
+
+    echo $'[\n]' > "${logs_dir}/vulnerability-diffs/${package}-node.json"
+
+    while read -r line; do
+        type=$(echo "${line}" | jq ".type")
+        if [ -z "$type" ] || [ "$type" = "null" ] || [ "$type" != "auditAdvisory" ]; then
+            continue
+        fi
+
+        id=$(echo "${line}" | jq ".data.advisory.id")
+        if node_vulnerability_exists $ori_file $id; then
+            continue
+        fi
+
+        path=$(echo "${line}" | jq ".data.resolution.path")
+        title=$(echo "${line}" | jq ".data.advisory.title")
+        desc=$(echo "${line}" | jq ".data.advisory.overview")
+        cvss_score=$(echo "${line}" | jq ".data.advisory.cvss.score")
+        ref=$(echo "${line}" | jq ".data.advisory.url")
+
+        insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${logs_dir}/vulnerability_diffs/${package}-node.json"
+    done < "$new_file"
+}
+
+node_vulnerability_exists() {
+    local file=$1
+    local id=$2
+
+    while read -r line; do
+        type=$(echo "${line}" | jq ".type")
+        if [ -z "$type" ] || [ "$type" = "null" ] || [ "$type" != "auditAdvisory" ]; then
+            continue
+        fi
+
+        match_id=$(echo "${line}" | jq ".data.advisory.id")
+        if [ $match_id = $id ]; then
+            return 0
+        fi
+    done < "$file"
+
+    return 1
+}
+
+insert_into_vulnerability() {
+    local id=$1
+    local path=$2
+    local title=$3
+    local desc=$4
+    local cvss_score=$5
+    local ref=$6
+    local file=$7
+
+    if [ "$(head -c3 ${file})" = $'[\n]' ]; then
+        sed -i "2 i\ \t{\n\t\t\"id\": ${id},\n\t\t\"path\": ${path},\n\t\t\"title\": ${title},\n\t\t\"desc\": ${desc},\n\t\t\"cvss_score\": ${cvss_score},\n\t\t\"ref\": ${ref}\n\t}" "${file}"
+    else
+        sed -i "2 i\ \t{\n\t\t\"id\": ${id},\n\t\t\"path\": ${path},\n\t\t\"title\": ${title},\n\t\t\"desc\": ${desc},\n\t\t\"cvss_score\": ${cvss_score},\n\t\t\"ref\": ${ref}\n\t}," "${file}"
     fi
 }
 
@@ -125,6 +423,7 @@ create_srpm() {
     local version=
 
     rm -rf ${tmp_dir}/rpmbuild/SRPMS/${package}*
+    rm -rf ${tmp_dir}/rpmbuild/SOURCES/*
     mkdir -vp ${tmp_dir}/rpmbuild/{SOURCES,SPECS,BUILD,SRPMS,RPMS}
 
     pushd ${submodule_dir}/$package
@@ -154,6 +453,13 @@ create_srpm() {
             build_generic_tarball $package $version "password-page"
         else
             build_generic_tarball $package $version
+        fi
+    else
+        if [ "$package" == "grafana" ]; then
+            build_3rd_tallbar $package "grafana-yarn.lock" "yarn.lock" "1"
+            build_3rd_tallbar "node-sass" "node-sass-package-lock.json" "package-lock.json"
+        else
+            build_3rd_tallbar $package
         fi
     fi
 
@@ -188,6 +494,11 @@ check_commands() {
 
     if ! command -v npm &> /dev/null; then
         echo "'npm' is required to run this script"
+        exit 1
+    fi
+
+    if ! command -v yarn &> /dev/null; then
+        echo "'yarn' is required to run this script"
         exit 1
     fi
 }
