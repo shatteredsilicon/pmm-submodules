@@ -11,5 +11,6 @@ result_dir=${root_dir}/results
 srpm_dir=${result_dir}/SRPMS
 rpm_dir=${result_dir}/RPMS
 logs_dir=${root_dir}/logs
+docs_dir=${root_dir}/docs
 rpmbuild_docker_image=${RPMBUILD_DOCKER_IMAGE:-"shatteredsilicon/rpmbuild"}
 packages=(ssm-client percona-toolkit ssm-dashboards ssm-manage ssm-managed ssm-qan-api ssm-qan-app ssm-server ssm-update consul orchestrator rds_exporter prometheus grafana)
