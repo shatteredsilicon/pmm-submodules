@@ -1,0 +1,338 @@
+#!/bin/bash
+
+set -o xtrace
+
+. $(dirname $0)/vars
+
+check_vulnerability() {
+    local package=$1
+    local oc=$2
+    local nc=$3
+
+    pushd ${submodule_dir}/${package}
+        if [ -d .git ] || [ -f .git ]; then
+            git reset ${oc} --hard
+            pull_dep_in_place $package ${nc}
+        else
+            if [ "$package" != "grafana" ]; then
+                echo "only grafana has fixed vulnerabilities"
+                return
+            fi
+
+            spectool -C ${tmp_dir}/rpmbuild/SOURCES/ -g grafana.spec
+            local tarball=$(find ${tmp_dir}/rpmbuild/SOURCES/ -maxdepth 1 -type f -iname "${package}*.tar.gz" | head -1)
+            tar -C ${tmp_dir}/rpmbuild/SOURCES/ -zxf ${tarball}
+            local package_dir=$(find ${tmp_dir}/rpmbuild/SOURCES/ -maxdepth 1 -type d -iname "${package}*" | head -1)
+            pushd ${package_dir}
+                check_vulnerabilities $package "" ${submodule_dir}/${package}/grafana-yarn.lock
+            popd
+        fi
+    popd
+}
+
+check_vulnerabilities() {
+    local package=$1
+    local new_commit=$2
+    local new_file=$3
+
+    # make sure logs dir exists
+    mkdir -p ${logs_dir}/fixed-vulnerabilities
+
+    if [[ -f yarn.lock ]]; then
+        export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
+        check_yarn_vulnerabilities $package $new_commit $new_file
+    elif [[ -f Gopkg.toml ]]; then
+        export GOPATH=${tmp_dir}/go
+        rm -rf ${tmp_dir}/go/pkg/dep/sources
+        package_path=${tmp_dir}/go/src/$(git_url_to_import_path $(git remote get-url origin))
+        mkdir -p $(dirname ${package_path})
+        cp -rfT ${submodule_dir}/$package ${package_path}
+        pushd ${package_path}
+            check_dep_vulnerabilities $package $new_commit $new_file
+        popd
+    elif [[ -f go.mod ]]; then
+        if [ -f go.sum ]; then
+            check_mod_vulnerabilities $package $new_commit $new_file
+        fi
+    elif [[ -f package.json ]]; then
+        export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
+
+        if [ -f package-lock.json ]; then
+            check_npm_vulnerabilities $package $new_commit $new_file
+        fi
+    fi
+}
+
+check_dep_vulnerabilities() {
+    local package=$1
+    local new_commit=$2
+    local new_file=$3
+
+    if ! command -v nancy &> /dev/null; then
+        echo "Ignore checking vulnerabilities of ${package}, 'nancy' is required"
+        return
+    fi
+
+    if [ ! -f Gopkg.lock ]; then
+        echo "Ignore checking vulnerabilities of ${package}, original Gopkg.lock file doesn't exist"
+        return
+    fi
+
+    GO111MODULE=off dep ensure
+    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-ori
+
+    rm -rf vendor
+    if [ -d .git ] || [ -f .git ]; then
+        git reset ${new_commit} --hard
+    else
+        mv -f ${new_file} Gopkg.lock
+    fi
+    GO111MODULE=off dep ensure
+    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-new
+
+    gen_go_vulnerabilities ${package} /tmp/${package}-dep-vulnerability-new /tmp/${package}-dep-vulnerability-ori
+}
+
+check_mod_vulnerabilities() {
+    local package=$1
+    local new_commit=$2
+    local new_file=$3
+
+    if ! command -v nancy &> /dev/null; then
+        echo "Ignore checking vulnerabilities of ${package}, 'nancy' is required"
+        return
+    fi
+
+    if [ ! -f go.sum ]; then
+        echo "Ignore checking vulnerabilities of ${package}, original go.sum file doesn't exist"
+        return
+    fi
+
+    GO111MODULE=on go mod vendor
+    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > /tmp/${package}-mod-vulnerability-ori
+
+    rm -rf vendor
+    if [ -d .git ] || [ -f .git ]; then
+        git reset ${new_commit} --hard
+    else
+        mv -f ${new_file} go.sum
+    fi
+    GO111MODULE=on go mod vendor
+    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > /tmp/${package}-mod-vulnerability-new
+
+    gen_go_vulnerabilities ${package} /tmp/${package}-mod-vulnerability-new /tmp/${package}-mod-vulnerability-ori
+}
+
+check_npm_vulnerabilities() {
+    local package=$1
+    local new_commit=$2
+    local new_file=$3
+
+    if [ ! -f package-lock.json ]; then
+        echo "Ignore checking vulnerabilities of ${package}, original package-lock.json file not exists"
+        set -o errexit
+        return
+    fi
+
+    yarn import
+    yarn audit --json > /tmp/${package}-npm-vulnerability-ori
+    rm -f yarn.lock
+
+    if [ -d .git ] || [ -f .git ]; then
+        git reset ${new_commit} --hard
+    else
+        mv -f ${new_file} package-lock.json
+    fi
+    yarn import
+    yarn audit --json > /tmp/${package}-npm-vulnerability-new
+
+    gen_node_vulnerabilities ${package} /tmp/${package}-npm-vulnerability-new /tmp/${package}-npm-vulnerability-ori
+}
+
+check_yarn_vulnerabilities() {
+    local package=$1
+
+    if [ ! -f yarn.lock ]; then
+        echo "Ignore checking vulnerabilities of ${package}, original yarn.lock file not exists"
+        return
+    fi
+
+    yarn audit --json > /tmp/${package}-yarn-vulnerability-ori
+
+    if [ -d .git ] || [ -f .git ]; then
+        git reset ${new_commit} --hard
+    else
+        mv -f ${new_file} yarn.lock
+    fi
+    yarn audit --json > /tmp/${package}-yarn-vulnerability-new
+
+    gen_node_vulnerabilities ${package} /tmp/${package}-yarn-vulnerability-new /tmp/${package}-yarn-vulnerability-ori
+}
+
+gen_go_vulnerabilities() {
+    local package=$1
+    local ori_file=$2
+    local new_file=$3
+
+    echo $'[\n]' > "${logs_dir}/fixed-vulnerabilities/${package}-go.json"
+
+    i=0
+    vulnerable_length=$(cat "${new_file}" | jq ".vulnerable | length")
+    while [ $i -lt ${vulnerable_length} ]; do
+        vulnerable=$(cat "${new_file}" | jq ".vulnerable[${i}]")
+        if [ -z "$vulnerable" ] || [ "$vulnerable" = "null" ]; then
+            i=$((i+1))
+            continue
+        fi
+
+        path=$(echo "${vulnerable}" | jq ".Coordinates")
+        j=0
+        vulnerability_length=$(echo "${vulnerable}" | jq ".Vulnerabilities | length")
+        while [ $j -lt $vulnerability_length ]; do
+            vulnerability=$(echo "${vulnerable}" | jq ".Vulnerabilities[${j}]")
+            if [ -z "$vulnerability" ] || [ "$vulnerability" = "null" ]; then
+                j=$((j+1))
+                continue
+            fi
+
+            id=$(echo "${vulnerability}" | jq ".ID")
+            if go_vulnerability_exists "$ori_file" $id; then
+                j=$((j+1))
+                continue
+            fi
+
+            title=$(echo "${vulnerability}" | jq ".Title")
+            desc=$(echo "${vulnerability}" | jq ".Description")
+            cvss_score=$(echo "${vulnerability}" | jq ".CvssScore")
+            ref=$(echo "${vulnerability}" | jq ".Reference")
+
+            insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${logs_dir}/fixed-vulnerabilities/${package}-go.json"
+            j=$((j+1))
+        done
+
+        i=$((i+1))
+    done
+}
+
+go_vulnerability_exists() {
+    local file=$1
+    local id=$2
+
+    i=0
+    vulnerable_length=$(cat "${file}" | jq ".vulnerable | length")
+    while [ $i -lt ${vulnerable_length} ]; do
+        vulnerable=$(cat "${file}" | jq ".vulnerable[${i}]")
+        if [ -z "$vulnerable" ] || [ "$vulnerable" = "null" ]; then
+            i=$((i+1))
+            continue
+        fi
+
+        j=0
+        vulnerability_length=$(echo "${vulnerable}" | jq ".Vulnerabilities | length")
+        while [ $j -lt $vulnerability_length ]; do
+            vulnerability=$(echo "${vulnerable}" | jq ".Vulnerabilities[${j}]")
+            if [ -z "$vulnerability" ] || [ "$vulnerability" = "null" ]; then
+                j=$((j+1))
+                continue
+            fi
+
+            match_id=$(echo "${vulnerability}" | jq ".ID")
+            if [ $id = $match_id ]; then
+                return 0
+            fi
+
+            j=$((j+1))
+        done
+
+        i=$((i+1))
+    done
+
+    return 1
+}
+
+gen_node_vulnerabilities() {
+    local package=$1
+    local ori_file=$2
+    local new_file=$3
+
+    echo $'[\n]' > "${logs_dir}/fixed-vulnerabilities/${package}-node.json"
+
+    while read -r line; do
+        type=$(echo "${line}" | jq -r ".type")
+        if [ -z "$type" ] || [ "$type" = "null" ] || [ "$type" != "auditAdvisory" ]; then
+            continue
+        fi
+
+        id=$(echo "${line}" | jq ".data.advisory.id")
+        if node_vulnerability_exists $ori_file $id; then
+            continue
+        fi
+
+        path=$(echo "${line}" | jq ".data.resolution.path")
+        title=$(echo "${line}" | jq ".data.advisory.title")
+        desc=$(echo "${line}" | jq ".data.advisory.overview")
+        cvss_score=$(echo "${line}" | jq ".data.advisory.cvss.score")
+        ref=$(echo "${line}" | jq ".data.advisory.url")
+
+        insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${logs_dir}/fixed-vulnerabilities/${package}-node.json"
+    done < "$new_file"
+}
+
+node_vulnerability_exists() {
+    local file=$1
+    local id=$2
+
+    while read -r line; do
+        type=$(echo "${line}" | jq -r ".type")
+        if [ -z "$type" ] || [ "$type" = "null" ] || [ "$type" != "auditAdvisory" ]; then
+            continue
+        fi
+
+        match_id=$(echo "${line}" | jq ".data.advisory.id")
+        if [ $match_id = $id ]; then
+            return 0
+        fi
+    done < "$file"
+
+    return 1
+}
+
+insert_into_vulnerability() {
+    local id=$1
+    local path=$2
+    local title=$3
+    local desc=$4
+    local cvss_score=$5
+    local ref=$6
+    local file=$7
+
+    if [ "$(head -c3 ${file})" = $'[\n]' ]; then
+        sed -i "2 i\ \t{\n\t\t\"id\": ${id},\n\t\t\"path\": ${path},\n\t\t\"title\": ${title},\n\t\t\"desc\": ${desc},\n\t\t\"cvss_score\": ${cvss_score},\n\t\t\"ref\": ${ref}\n\t}" "${file}"
+    else
+        sed -i "2 i\ \t{\n\t\t\"id\": ${id},\n\t\t\"path\": ${path},\n\t\t\"title\": ${title},\n\t\t\"desc\": ${desc},\n\t\t\"cvss_score\": ${cvss_score},\n\t\t\"ref\": ${ref}\n\t}," "${file}"
+    fi
+}
+
+main() {
+    local package=
+    local old_commit=1.x
+    local new_commit=v1.18.0
+
+    for arg do
+        val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
+        case "$arg" in
+            --oc=*)         old_commit="$val" ;;
+            --nc=*)         new_commit="$val" ;;
+            *)              package="$val" ;;
+        esac
+    done
+
+    if [ -z "$package" ]; then
+        echo "Please specify package to be checked"
+        return
+    fi
+
+    check_vulnerability $package $old_commit $new_commit
+}
+
+main $@
