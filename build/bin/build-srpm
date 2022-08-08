@@ -379,7 +379,7 @@ gen_node_vulnerabilities() {
         cvss_score=$(echo "${line}" | jq ".data.advisory.cvss.score")
         ref=$(echo "${line}" | jq ".data.advisory.url")
 
-        insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${logs_dir}/vulnerability_diffs/${package}-node.json"
+        insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${logs_dir}/vulnerability-diffs/${package}-node.json"
     done < "$new_file"
 }
 
