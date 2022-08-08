@@ -11,6 +11,7 @@
 - ```nodejs v14``` shipped with RHEL 8
 - [yarn](https://yarnpkg.com/)
 - [Nancy](https://github.com/sonatype-nexus-community/nancy) (for checking vulnerabilities of Golang packages)
+- [jq](https://stedolan.github.io/jq/) (for parsing vulnerabilities)
 
 ## Setup
 
