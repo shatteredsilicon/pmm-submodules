@@ -20,6 +20,9 @@ EOF
         exit 1
 }
 
+node_vulnerability_ids=()
+go_vulnerability_ids=()
+
 copy_specs() {
     local package=$1
     local version=$2
@@ -190,6 +193,7 @@ check_dep_vulnerabilities() {
     GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-ori
 
     set +o xtrace
+    go_vulnerability_ids=()
     gen_go_vulnerabilities ${package} /tmp/${package}-dep-vulnerability-ori /tmp/${package}-dep-vulnerability-new
     set -o xtrace
 
@@ -221,6 +225,7 @@ check_mod_vulnerabilities() {
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > /tmp/${package}-mod-vulnerability-ori
 
     set +o xtrace
+    go_vulnerability_ids=()
     gen_go_vulnerabilities ${package} /tmp/${package}-mod-vulnerability-ori /tmp/${package}-mod-vulnerability-new
     set -o xtrace
 
@@ -245,6 +250,7 @@ check_npm_vulnerabilities() {
     rm -f yarn.lock
 
     set +o xtrace
+    node_vulnerability_ids=()
     gen_node_vulnerabilities ${package} /tmp/${package}-npm-vulnerability-ori /tmp/${package}-npm-vulnerability-new
     set -o xtrace
 
@@ -268,6 +274,7 @@ check_yarn_vulnerabilities() {
     mv -f yarn.lock.orig yarn.lock
 
     set +o xtrace
+    node_vulnerability_ids=()
     gen_node_vulnerabilities ${package} /tmp/${package}-yarn-vulnerability-ori /tmp/${package}-yarn-vulnerability-new
     set -o xtrace
 
@@ -322,37 +329,47 @@ gen_go_vulnerabilities() {
 go_vulnerability_exists() {
     local file=$1
     local id=$2
+    local exists=1
 
-    i=0
-    vulnerable_length=$(cat "${file}" | jq ".vulnerable | length")
-    while [ $i -lt ${vulnerable_length} ]; do
-        vulnerable=$(cat "${file}" | jq ".vulnerable[${i}]")
-        if [ -z "$vulnerable" ] || [ "$vulnerable" = "null" ]; then
-            i=$((i+1))
-            continue
-        fi
-
-        j=0
-        vulnerability_length=$(echo "${vulnerable}" | jq ".Vulnerabilities | length")
-        while [ $j -lt $vulnerability_length ]; do
-            vulnerability=$(echo "${vulnerable}" | jq ".Vulnerabilities[${j}]")
-            if [ -z "$vulnerability" ] || [ "$vulnerability" = "null" ]; then
-                j=$((j+1))
-                continue
-            fi
-
-            match_id=$(echo "${vulnerability}" | jq ".ID")
+    if [ ${#go_vulnerability_ids[@]} -gt 0 ]; then
+        for match_id in ${go_vulnerability_ids[@]}; do
             if [ $id = $match_id ]; then
                 return 0
             fi
-
-            j=$((j+1))
         done
+    else
+        i=0
+        vulnerable_length=$(cat "${file}" | jq ".vulnerable | length")
+        while [ $i -lt ${vulnerable_length} ]; do
+            vulnerable=$(cat "${file}" | jq ".vulnerable[${i}]")
+            if [ -z "$vulnerable" ] || [ "$vulnerable" = "null" ]; then
+                i=$((i+1))
+                continue
+            fi
 
-        i=$((i+1))
-    done
+            j=0
+            vulnerability_length=$(echo "${vulnerable}" | jq ".Vulnerabilities | length")
+            while [ $j -lt $vulnerability_length ]; do
+                vulnerability=$(echo "${vulnerable}" | jq ".Vulnerabilities[${j}]")
+                if [ -z "$vulnerability" ] || [ "$vulnerability" = "null" ]; then
+                    j=$((j+1))
+                    continue
+                fi
 
-    return 1
+                match_id=$(echo "${vulnerability}" | jq ".ID")
+                go_vulnerability_ids+=($match_id)
+                if [ $id = $match_id ]; then
+                    exists=0
+                fi
+
+                j=$((j+1))
+            done
+
+            i=$((i+1))
+        done
+    fi
+
+    return $exists
 }
 
 gen_node_vulnerabilities() {
@@ -363,7 +380,7 @@ gen_node_vulnerabilities() {
     echo $'[\n]' > "${logs_dir}/vulnerability-diffs/${package}-node.json"
 
     while read -r line; do
-        type=$(echo "${line}" | jq ".type")
+        type=$(echo "${line}" | jq -r ".type")
         if [ -z "$type" ] || [ "$type" = "null" ] || [ "$type" != "auditAdvisory" ]; then
             continue
         fi
@@ -379,27 +396,37 @@ gen_node_vulnerabilities() {
         cvss_score=$(echo "${line}" | jq ".data.advisory.cvss.score")
         ref=$(echo "${line}" | jq ".data.advisory.url")
 
-        insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${logs_dir}/vulnerability_diffs/${package}-node.json"
+        insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${logs_dir}/vulnerability-diffs/${package}-node.json"
     done < "$new_file"
 }
 
 node_vulnerability_exists() {
     local file=$1
     local id=$2
+    local exists=1
 
-    while read -r line; do
-        type=$(echo "${line}" | jq ".type")
-        if [ -z "$type" ] || [ "$type" = "null" ] || [ "$type" != "auditAdvisory" ]; then
-            continue
-        fi
+    if [ ${#node_vulnerability_ids[@]} -gt 0 ]; then
+        for match_id in ${node_vulnerability_ids[@]}; do
+            if [ $id = $match_id ]; then
+                return 0
+            fi
+        done
+    else
+        while read -r line; do
+            type=$(echo "${line}" | jq -r ".type")
+            if [ -z "$type" ] || [ "$type" = "null" ] || [ "$type" != "auditAdvisory" ]; then
+                continue
+            fi
 
-        match_id=$(echo "${line}" | jq ".data.advisory.id")
-        if [ $match_id = $id ]; then
-            return 0
-        fi
-    done < "$file"
+            match_id=$(echo "${line}" | jq ".data.advisory.id")
+            node_vulnerability_ids+=($match_id)
+            if [ $match_id = $id ]; then
+                exists=0
+            fi
+        done < "$file"
+    fi
 
-    return 1
+    return $exists
 }
 
 insert_into_vulnerability() {
