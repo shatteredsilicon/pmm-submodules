@@ -30,7 +30,7 @@ Patch2:         grafana-5.4.5-change-icon.patch
 BuildRequires:  phantomjs
 BuildRequires:  golang >= 1.7.3
 BuildRequires:  python2-devel
-BuildRequires:  nodejs fontconfig
+BuildRequires:  nodejs npm fontconfig
 BuildRequires:  gcc-c++ make
 BuildRequires:  nodejs-devel
 
