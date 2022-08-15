@@ -432,8 +432,14 @@ gen_go_vulnerabilities() {
 
             title=$(echo "${vulnerability}" | jq ".Title")
             desc=$(echo "${vulnerability}" | jq ".Description")
-            cvss_score=$(echo "${vulnerability}" | jq ".CvssScore")
             ref=$(echo "${vulnerability}" | jq ".Reference")
+
+            # check if cvss_score is a vaild positive number
+            cvss_score=$(echo "${vulnerability}" | jq ".CvssScore")
+            re='^[0-9]+([.][0-9]+)?$'
+            if ! [[ $cvss_score =~ $re ]] ; then
+                cvss_score=0
+            fi
 
             insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${dest_file}"
             j=$((j+1))
@@ -511,8 +517,13 @@ gen_node_vulnerabilities() {
         path=$(echo "${line}" | jq ".data.resolution.path")
         title=$(echo "${line}" | jq ".data.advisory.title")
         desc=$(echo "${line}" | jq ".data.advisory.overview")
-        cvss_score=$(echo "${line}" | jq ".data.advisory.cvss.score")
         ref=$(echo "${line}" | jq ".data.advisory.url")
+
+        cvss_score=$(echo "${line}" | jq ".data.advisory.cvss.score")
+        re='^[0-9]+([.][0-9]+)?$'
+        if ! [[ $cvss_score =~ $re ]] ; then
+            cvss_score=0
+        fi
 
         insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${dest_file}"
     done < "$new_file"
@@ -557,9 +568,9 @@ insert_into_vulnerability() {
     local file=$7
 
     if [ "$(head -c3 ${file})" = $'[\n]' ]; then
-        sed -i "2 i\ \t{\n\t\t\"id\": ${id},\n\t\t\"path\": ${path},\n\t\t\"title\": ${title},\n\t\t\"desc\": ${desc},\n\t\t\"cvss_score\": ${cvss_score},\n\t\t\"ref\": ${ref}\n\t}" "${file}"
+        sed -i "2 i\ \t{\n\t\t\"id\": $(printf "%q" "${id}"),\n\t\t\"path\": $(printf "%q" "${path}"),\n\t\t\"title\": $(printf "%q" "${title}"),\n\t\t\"desc\": $(printf "%q" "${desc}"),\n\t\t\"cvss_score\": $(printf "%q" "${cvss_score}"),\n\t\t\"ref\": $(printf "%q" "${ref}")\n\t}" "${file}"
     else
-        sed -i "2 i\ \t{\n\t\t\"id\": ${id},\n\t\t\"path\": ${path},\n\t\t\"title\": ${title},\n\t\t\"desc\": ${desc},\n\t\t\"cvss_score\": ${cvss_score},\n\t\t\"ref\": ${ref}\n\t}," "${file}"
+        sed -i "2 i\ \t{\n\t\t\"id\": $(printf "%q" "${id}"),\n\t\t\"path\": $(printf "%q" "${path}"),\n\t\t\"title\": $(printf "%q" "${title}"),\n\t\t\"desc\": $(printf "%q" "${desc}"),\n\t\t\"cvss_score\": $(printf "%q" "${cvss_score}"),\n\t\t\"ref\": $(printf "%q" "${ref}")\n\t}," "${file}"
     fi
 }
 
