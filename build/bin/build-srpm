@@ -20,8 +20,8 @@ EOF
         exit 1
 }
 
-node_vulnerability_ids=()
-go_vulnerability_ids=()
+old_vulnerability_ids=()
+result_vulnerability_ids=()
 
 copy_specs() {
     local package=$1
@@ -228,7 +228,8 @@ check_dep_vulnerabilities() {
     GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-ori
 
     set +o xtrace
-    go_vulnerability_ids=()
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
     gen_go_vulnerabilities ${package} /tmp/${package}-dep-vulnerability-ori /tmp/${package}-dep-vulnerability-new
     set -o xtrace
 
@@ -248,7 +249,8 @@ check_dep_vulnerabilities() {
     GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-pmm
 
     set +o xtrace
-    go_vulnerability_ids=()
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
     gen_go_vulnerabilities ${package} /tmp/${package}-dep-vulnerability-ori /tmp/${package}-dep-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     set -o xtrace
@@ -282,7 +284,8 @@ check_mod_vulnerabilities() {
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > /tmp/${package}-mod-vulnerability-ori
 
     set +o xtrace
-    go_vulnerability_ids=()
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
     gen_go_vulnerabilities ${package} /tmp/${package}-mod-vulnerability-ori /tmp/${package}-mod-vulnerability-new
     set -o xtrace
 
@@ -302,7 +305,8 @@ check_mod_vulnerabilities() {
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > /tmp/${package}-mod-vulnerability-pmm
 
     set +o xtrace
-    go_vulnerability_ids=()
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
     gen_go_vulnerabilities ${package} /tmp/${package}-mod-vulnerability-ori /tmp/${package}-mod-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     set -o xtrace
@@ -329,7 +333,8 @@ check_npm_vulnerabilities() {
     rm -f yarn.lock
 
     set +o xtrace
-    node_vulnerability_ids=()
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
     gen_node_vulnerabilities ${package} /tmp/${package}-npm-vulnerability-ori /tmp/${package}-npm-vulnerability-new
     set -o xtrace
 
@@ -347,7 +352,8 @@ check_npm_vulnerabilities() {
     yarn audit --json > /tmp/${package}-npm-vulnerability-pmm
 
     set +o xtrace
-    node_vulnerability_ids=()
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
     gen_node_vulnerabilities ${package} /tmp/${package}-npm-vulnerability-ori /tmp/${package}-npm-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     set -o xtrace
@@ -372,7 +378,8 @@ check_yarn_vulnerabilities() {
     yarn audit --json > /tmp/${package}-yarn-vulnerability-new
 
     set +o xtrace
-    node_vulnerability_ids=()
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
     gen_node_vulnerabilities ${package} /tmp/${package}-yarn-vulnerability-ori /tmp/${package}-yarn-vulnerability-new
     set -o xtrace
 
@@ -389,7 +396,8 @@ check_yarn_vulnerabilities() {
     yarn audit --json > /tmp/${package}-yarn-vulnerability-pmm
 
     set +o xtrace
-    node_vulnerability_ids=()
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
     gen_node_vulnerabilities ${package} /tmp/${package}-yarn-vulnerability-ori /tmp/${package}-yarn-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     set -o xtrace
@@ -425,10 +433,12 @@ gen_go_vulnerabilities() {
             fi
 
             id=$(echo "${vulnerability}" | jq ".ID")
-            if go_vulnerability_exists "$ori_file" $id; then
+            if go_vulnerability_exists "$ori_file" $id || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
                 j=$((j+1))
                 continue
             fi
+
+            result_vulnerability_ids+=(${id})
 
             title=$(echo "${vulnerability}" | jq ".Title")
             desc=$(echo "${vulnerability}" | jq ".Description")
@@ -454,8 +464,8 @@ go_vulnerability_exists() {
     local id=$2
     local exists=1
 
-    if [ ${#go_vulnerability_ids[@]} -gt 0 ]; then
-        for match_id in ${go_vulnerability_ids[@]}; do
+    if [ ${#old_vulnerability_ids[@]} -gt 0 ]; then
+        for match_id in ${old_vulnerability_ids[@]}; do
             if [ $id = $match_id ]; then
                 return 0
             fi
@@ -480,7 +490,7 @@ go_vulnerability_exists() {
                 fi
 
                 match_id=$(echo "${vulnerability}" | jq ".ID")
-                go_vulnerability_ids+=($match_id)
+                old_vulnerability_ids+=($match_id)
                 if [ $id = $match_id ]; then
                     exists=0
                 fi
@@ -510,9 +520,11 @@ gen_node_vulnerabilities() {
         fi
 
         id=$(echo "${line}" | jq ".data.advisory.id")
-        if node_vulnerability_exists $ori_file $id; then
+        if node_vulnerability_exists $ori_file $id || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
             continue
         fi
+
+        result_vulnerability_ids+=(${id})
 
         path=$(echo "${line}" | jq ".data.resolution.path")
         title=$(echo "${line}" | jq ".data.advisory.title")
@@ -534,8 +546,8 @@ node_vulnerability_exists() {
     local id=$2
     local exists=1
 
-    if [ ${#node_vulnerability_ids[@]} -gt 0 ]; then
-        for match_id in ${node_vulnerability_ids[@]}; do
+    if [ ${#old_vulnerability_ids[@]} -gt 0 ]; then
+        for match_id in ${old_vulnerability_ids[@]}; do
             if [ $id = $match_id ]; then
                 return 0
             fi
@@ -548,7 +560,7 @@ node_vulnerability_exists() {
             fi
 
             match_id=$(echo "${line}" | jq ".data.advisory.id")
-            node_vulnerability_ids+=($match_id)
+            old_vulnerability_ids+=($match_id)
             if [ $match_id = $id ]; then
                 exists=0
             fi
