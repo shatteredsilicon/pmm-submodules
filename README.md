@@ -62,8 +62,8 @@ include('templates/ssm-8.tpl')
 config_opts['root'] = 'ssm-8-aarch64'
 config_opts['description'] = 'SSM 8'
 config_opts['target_arch'] = 'aarch64'
-config_opts['legal_host_arches'] = ('aarch64',)
-config_opts['module_enable'] = ('nodejs:14')
+config_opts['legal_host_arches'] = ['aarch64']
+config_opts['module_enable'] = ['nodejs:14']
 ```
 
 ## Build
