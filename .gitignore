@@ -4,4 +4,5 @@ build/ssm-server-docker/RPMS/
 tmp/
 results/
 logs/
+docs/
 .kitchen/
