@@ -1,0 +1,3 @@
+| id | path | title | desc | cvss | ref |
+| --- | --- | --- | --- | --- | --- |
+| CVE-2020-8911 | pkg:golang/github.com/aws/aws-sdk-go@v1.15.48 | [CVE-2022-29153] CWE-918: Server-Side Request Forgery (SSRF) | HashiCorp Consul and Consul Enterprise up to 1.9.16, 1.10.9, and 1.11.4 may allow server side request forgery when the Consul client agent follows redirects returned by HTTP health check endpoints. Fixed in 1.9.17, 1.10.10, and 1.11.5. | 0 | https://ossindex.sonatype.org/vulnerability/CVE-2022-29153?component-type=golang&component-name=github.com%2Fhashicorp%2Fconsul&utm_source=nancy-client&utm_medium=integration&utm_content=1.0.37 |

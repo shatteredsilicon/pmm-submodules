@@ -20,8 +20,8 @@ EOF
         exit 1
 }
 
-node_vulnerability_ids=()
-go_vulnerability_ids=()
+old_vulnerability_ids=()
+result_vulnerability_ids=()
 
 copy_specs() {
     local package=$1
@@ -114,11 +114,17 @@ build_3rd_tallbar() {
         if [ -n "${tarball}" ]; then
             tar -zxf ${tarball}
             local package_dir=$(find . -maxdepth 1 -type d -iname "${package}*" | head -1)
+            local local_lockfile=
+
             if [ -n "${dep_src}" ]; then
+                if [[ -f "${package_dir}/${dep_dest}" ]]; then
+                    local_lockfile="${dep_dest}.build_3rd_tallbar"
+                    cp -f ${package_dir}/${dep_dest} ${package_dir}/${local_lockfile}
+                fi
                 cp ${dep_src} ${package_dir}/${dep_dest}
             fi
             pushd ${package_dir}
-                pull_dep_in_place $package $ignore_error
+                pull_dep_in_place $package "${local_lockfile}" $ignore_error
             popd
             rm -f ${tarball}
             tar -czf ${tarball} ${package_dir}
@@ -128,15 +134,27 @@ build_3rd_tallbar() {
 
 pull_dep_in_place() {
     local package=$1
-    local ignore_error=$2
+    local local_lockfile=$2
+    local ignore_error=$3
+    local is_excluded=0
+
+    local excluded_packages=(node-sass)
+    [[ " ${excluded_packages[*]} " == *" ${package} "* ]] && is_excluded=1
 
     # make sure logs dir exists
-    mkdir -p ${logs_dir}/vulnerability-diffs
+    mkdir -p ${logs_dir}/{vulnerability-diffs,fixed-vulnerabilities}
 
     if [[ -f yarn.lock ]]; then
         export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
 
-        check_yarn_vulnerabilities $package
+        if [[ $is_excluded -eq 0 ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
+            cp -f yarn.lock yarn.lock.pull_dep_in_place # backup lock file
+            cp -f package.json package.json.pull_dep_in_place # backup dep file
+            check_yarn_vulnerabilities $package $local_lockfile
+            mv -f yarn.lock.pull_dep_in_place yarn.lock # restore lock file
+            mv -f package.json.pull_dep_in_place package.json # restore lock file
+        fi
+
         if [ -n "${ignore_error}" ]; then
             yarn || true
         else
@@ -144,25 +162,40 @@ pull_dep_in_place() {
         fi
     elif [[ -f Gopkg.toml ]]; then
         export GOPATH=${tmp_dir}/go
-        rm -rf ${tmp_dir}/go/pkg/dep/sources
         package_path=${tmp_dir}/go/src/$(git_url_to_import_path $(git remote get-url origin))
         mkdir -p $(dirname ${package_path})
-        cp -rfT ${submodule_dir}/$package ${package_path}
+        ln -sfF ${submodule_dir}/$package ${package_path}
         pushd ${package_path}
-            check_dep_vulnerabilities $package
+            if [[ $is_excluded -eq 0 ]] && [[ -f Gopkg.lock ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
+                cp -f Gopkg.lock Gopkg.lock.pull_dep_in_place # backup lock file
+                cp -f Gopkg.toml Gopkg.toml.pull_dep_in_place # backup dep file
+                check_dep_vulnerabilities $package $local_lockfile
+                mv -f Gopkg.lock.pull_dep_in_place Gopkg.lock # restore lock file
+                mv -f Gopkg.toml.pull_dep_in_place Gopkg.toml # restore dep file
+            fi
+
+            rm -rf ${tmp_dir}/go/pkg/dep/sources vendor
             GO111MODULE=off dep ensure
         popd
-        cp -r ${package_path}/vendor ./
     elif [[ -f go.mod ]]; then
-        if [ -f go.sum ]; then
-            check_mod_vulnerabilities $package
+        if [[ $is_excluded -eq 0 ]] && [[ -f go.sum ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
+            cp -f go.sum go.sum.pull_dep_in_place # backup lock file
+            cp -f go.mod go.mod.pull_dep_in_place # backup dep file
+            check_mod_vulnerabilities $package $local_lockfile
+            mv -f go.sum.pull_dep_in_place go.sum # restore lock file
+            mv -f go.mod.pull_dep_in_place go.mod # restore dep file
         fi
+
         GO111MODULE=on go mod vendor
     elif [[ -f package.json ]]; then
         export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
 
-        if [ -f package-lock.json ]; then
-            check_npm_vulnerabilities $package
+        if [[ $is_excluded -eq 0 ]] && [[ -f package-lock.json ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
+            cp -f package-lock.json package-lock.json.pull_dep_in_place # backup lock file
+            cp -f package.json package.json.pull_dep_in_place # backup dep file
+            check_npm_vulnerabilities $package $local_lockfile
+            mv -f package-lock.json.pull_dep_in_place package-lock.json # restore lock file
+            mv -f package.json.pull_dep_in_place package.json # restore dep file
         fi
         npm install
     fi
@@ -171,6 +204,7 @@ pull_dep_in_place() {
 check_dep_vulnerabilities() {
     set +o errexit
     local package=$1
+    local local_lockfile=${2}
 
     if ! command -v nancy &> /dev/null; then
         echo "Ignore checking vulnerabilities of ${package}, 'nancy' is required"
@@ -185,16 +219,40 @@ check_dep_vulnerabilities() {
     fi
 
     mv -f Gopkg.lock Gopkg.lock.ori
+    rm -rf ${tmp_dir}/go/pkg/dep/sources vendor
     GO111MODULE=off dep ensure
     GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-new
     mv -f Gopkg.lock.ori Gopkg.lock
-    rm -rf vendor
+    rm -rf vendor ${tmp_dir}/go/pkg/dep/sources
     GO111MODULE=off dep ensure
     GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-ori
 
     set +o xtrace
-    go_vulnerability_ids=()
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
     gen_go_vulnerabilities ${package} /tmp/${package}-dep-vulnerability-ori /tmp/${package}-dep-vulnerability-new
+    set -o xtrace
+
+    # generate fixed-vulnerabilities list doc
+    mv -f Gopkg.lock Gopkg.lock.ori
+    if [ -n "${local_lockfile}" ]; then
+        mv ${local_lockfile} Gopkg.lock
+    elif [[ -d .git ]] || [[ -f .git ]]; then
+        git checkout pmm-1.x Gopkg.lock
+        git checkout pmm-1.x Gopkg.toml
+    else
+        set -o errexit
+        return
+    fi
+    rm -rf vendor ${tmp_dir}/go/pkg/dep/sources
+    GO111MODULE=off dep ensure
+    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-pmm
+
+    set +o xtrace
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
+    gen_go_vulnerabilities ${package} /tmp/${package}-dep-vulnerability-ori /tmp/${package}-dep-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-go.json
+    gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     set -o xtrace
 
     set -o errexit
@@ -203,6 +261,7 @@ check_dep_vulnerabilities() {
 check_mod_vulnerabilities() {
     set +o errexit
     local package=$1
+    local local_lockfile=$2
 
     if ! command -v nancy &> /dev/null; then
         echo "Ignore checking vulnerabilities of ${package}, 'nancy' is required"
@@ -225,8 +284,31 @@ check_mod_vulnerabilities() {
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > /tmp/${package}-mod-vulnerability-ori
 
     set +o xtrace
-    go_vulnerability_ids=()
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
     gen_go_vulnerabilities ${package} /tmp/${package}-mod-vulnerability-ori /tmp/${package}-mod-vulnerability-new
+    set -o xtrace
+
+    # generate fixed-vulnerabilities list doc
+    mv -f go.sum go.sum.ori
+    if [ -n "${local_lockfile}" ]; then
+        mv ${local_lockfile} go.sum
+    elif [[ -d .git ]] || [[ -f .git ]]; then
+        git checkout pmm-1.x go.sum
+        git checkout pmm-1.x go.mod
+    else
+        set -o errexit
+        return
+    fi
+    rm -rf vendor
+    GO111MODULE=on go mod vendor
+    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > /tmp/${package}-mod-vulnerability-pmm
+
+    set +o xtrace
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
+    gen_go_vulnerabilities ${package} /tmp/${package}-mod-vulnerability-ori /tmp/${package}-mod-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-go.json
+    gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     set -o xtrace
 
     set -o errexit
@@ -235,6 +317,7 @@ check_mod_vulnerabilities() {
 check_npm_vulnerabilities() {
     set +o errexit
     local package=$1
+    local local_lockfile=$2
 
     if [ ! -f package-lock.json ]; then
         echo "Ignore checking vulnerabilities of ${package}, original package-lock.json file not exists"
@@ -244,14 +327,35 @@ check_npm_vulnerabilities() {
 
     yarn import
     yarn audit --json > /tmp/${package}-npm-vulnerability-ori
-    rm -f yarn.lock
-    yarn generate-lock-entry
+    rm -f package-lock.json
+    yarn
     yarn audit --json > /tmp/${package}-npm-vulnerability-new
     rm -f yarn.lock
 
     set +o xtrace
-    node_vulnerability_ids=()
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
     gen_node_vulnerabilities ${package} /tmp/${package}-npm-vulnerability-ori /tmp/${package}-npm-vulnerability-new
+    set -o xtrace
+
+    # generate fixed-vulnerabilities list doc
+    if [ -n "${local_lockfile}" ]; then
+        mv ${local_lockfile} package-lock.json
+    elif [[ -d .git ]] || [[ -f .git ]]; then
+        git checkout pmm-1.x package-lock.json
+        git checkout pmm-1.x package.json
+    else
+        set -o errexit
+        return
+    fi
+    yarn import
+    yarn audit --json > /tmp/${package}-npm-vulnerability-pmm
+
+    set +o xtrace
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
+    gen_node_vulnerabilities ${package} /tmp/${package}-npm-vulnerability-ori /tmp/${package}-npm-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-node.json
+    gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     set -o xtrace
 
     set -o errexit
@@ -260,6 +364,7 @@ check_npm_vulnerabilities() {
 check_yarn_vulnerabilities() {
     set +o errexit
     local package=$1
+    local local_lockfile=$2
 
     if [ ! -f yarn.lock ]; then
         echo "Ignore checking vulnerabilities of ${package}, original yarn.lock file not exists"
@@ -268,14 +373,33 @@ check_yarn_vulnerabilities() {
     fi
 
     yarn audit --json > /tmp/${package}-yarn-vulnerability-ori
-    mv -f yarn.lock yarn.lock.orig
-    yarn install --mode update-lockfile
+    rm -f yarn.lock
+    yarn
     yarn audit --json > /tmp/${package}-yarn-vulnerability-new
-    mv -f yarn.lock.orig yarn.lock
 
     set +o xtrace
-    node_vulnerability_ids=()
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
     gen_node_vulnerabilities ${package} /tmp/${package}-yarn-vulnerability-ori /tmp/${package}-yarn-vulnerability-new
+    set -o xtrace
+
+    # generate fixed-vulnerabilities list doc
+    if [ -n "${local_lockfile}" ]; then
+        mv -f ${local_lockfile} yarn.lock
+    elif [[ -d .git ]] || [[ -f .git ]]; then
+        git checkout pmm-1.x yarn.lock
+        git checkout pmm-1.x package.lock
+    else
+        set -o errexit
+        return
+    fi
+    yarn audit --json > /tmp/${package}-yarn-vulnerability-pmm
+
+    set +o xtrace
+    old_vulnerability_ids=()
+    result_vulnerability_ids=()
+    gen_node_vulnerabilities ${package} /tmp/${package}-yarn-vulnerability-ori /tmp/${package}-yarn-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-node.json
+    gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     set -o xtrace
 
     set -o errexit
@@ -285,8 +409,9 @@ gen_go_vulnerabilities() {
     local package=$1
     local ori_file=$2
     local new_file=$3
+    local dest_file=${4:-"${logs_dir}/vulnerability-diffs/${package}-go.json"}
 
-    echo $'[\n]' > "${logs_dir}/vulnerability-diffs/${package}-go.json"
+    echo $'[\n]' > "${dest_file}"
 
     i=0
     vulnerable_length=$(cat "${new_file}" | jq ".vulnerable | length")
@@ -308,17 +433,25 @@ gen_go_vulnerabilities() {
             fi
 
             id=$(echo "${vulnerability}" | jq ".ID")
-            if go_vulnerability_exists "$ori_file" $id; then
+            if go_vulnerability_exists "$ori_file" $id || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
                 j=$((j+1))
                 continue
             fi
 
+            result_vulnerability_ids+=(${id})
+
             title=$(echo "${vulnerability}" | jq ".Title")
             desc=$(echo "${vulnerability}" | jq ".Description")
-            cvss_score=$(echo "${vulnerability}" | jq ".CvssScore")
             ref=$(echo "${vulnerability}" | jq ".Reference")
 
-            insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${logs_dir}/vulnerability-diffs/${package}-go.json"
+            # check if cvss_score is a vaild positive number
+            cvss_score=$(echo "${vulnerability}" | jq ".CvssScore")
+            re='^[0-9]+([.][0-9]+)?$'
+            if ! [[ $cvss_score =~ $re ]] ; then
+                cvss_score=0
+            fi
+
+            insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${dest_file}"
             j=$((j+1))
         done
 
@@ -331,8 +464,8 @@ go_vulnerability_exists() {
     local id=$2
     local exists=1
 
-    if [ ${#go_vulnerability_ids[@]} -gt 0 ]; then
-        for match_id in ${go_vulnerability_ids[@]}; do
+    if [ ${#old_vulnerability_ids[@]} -gt 0 ]; then
+        for match_id in ${old_vulnerability_ids[@]}; do
             if [ $id = $match_id ]; then
                 return 0
             fi
@@ -357,7 +490,7 @@ go_vulnerability_exists() {
                 fi
 
                 match_id=$(echo "${vulnerability}" | jq ".ID")
-                go_vulnerability_ids+=($match_id)
+                old_vulnerability_ids+=($match_id)
                 if [ $id = $match_id ]; then
                     exists=0
                 fi
@@ -376,8 +509,9 @@ gen_node_vulnerabilities() {
     local package=$1
     local ori_file=$2
     local new_file=$3
+    local dest_file=${4:-"${logs_dir}/vulnerability-diffs/${package}-node.json"}
 
-    echo $'[\n]' > "${logs_dir}/vulnerability-diffs/${package}-node.json"
+    echo $'[\n]' > "${dest_file}"
 
     while read -r line; do
         type=$(echo "${line}" | jq -r ".type")
@@ -386,17 +520,24 @@ gen_node_vulnerabilities() {
         fi
 
         id=$(echo "${line}" | jq ".data.advisory.id")
-        if node_vulnerability_exists $ori_file $id; then
+        if node_vulnerability_exists $ori_file $id || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
             continue
         fi
+
+        result_vulnerability_ids+=(${id})
 
         path=$(echo "${line}" | jq ".data.resolution.path")
         title=$(echo "${line}" | jq ".data.advisory.title")
         desc=$(echo "${line}" | jq ".data.advisory.overview")
-        cvss_score=$(echo "${line}" | jq ".data.advisory.cvss.score")
         ref=$(echo "${line}" | jq ".data.advisory.url")
 
-        insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${logs_dir}/vulnerability-diffs/${package}-node.json"
+        cvss_score=$(echo "${line}" | jq ".data.advisory.cvss.score")
+        re='^[0-9]+([.][0-9]+)?$'
+        if ! [[ $cvss_score =~ $re ]] ; then
+            cvss_score=0
+        fi
+
+        insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${dest_file}"
     done < "$new_file"
 }
 
@@ -405,8 +546,8 @@ node_vulnerability_exists() {
     local id=$2
     local exists=1
 
-    if [ ${#node_vulnerability_ids[@]} -gt 0 ]; then
-        for match_id in ${node_vulnerability_ids[@]}; do
+    if [ ${#old_vulnerability_ids[@]} -gt 0 ]; then
+        for match_id in ${old_vulnerability_ids[@]}; do
             if [ $id = $match_id ]; then
                 return 0
             fi
@@ -419,7 +560,7 @@ node_vulnerability_exists() {
             fi
 
             match_id=$(echo "${line}" | jq ".data.advisory.id")
-            node_vulnerability_ids+=($match_id)
+            old_vulnerability_ids+=($match_id)
             if [ $match_id = $id ]; then
                 exists=0
             fi
@@ -439,10 +580,37 @@ insert_into_vulnerability() {
     local file=$7
 
     if [ "$(head -c3 ${file})" = $'[\n]' ]; then
-        sed -i "2 i\ \t{\n\t\t\"id\": ${id},\n\t\t\"path\": ${path},\n\t\t\"title\": ${title},\n\t\t\"desc\": ${desc},\n\t\t\"cvss_score\": ${cvss_score},\n\t\t\"ref\": ${ref}\n\t}" "${file}"
+        sed -i "2 i\ \t{\n\t\t\"id\": $(printf "%q" "${id}"),\n\t\t\"path\": $(printf "%q" "${path}"),\n\t\t\"title\": $(printf "%q" "${title}"),\n\t\t\"desc\": $(printf "%q" "${desc}"),\n\t\t\"cvss_score\": $(printf "%q" "${cvss_score}"),\n\t\t\"ref\": $(printf "%q" "${ref}")\n\t}" "${file}"
     else
-        sed -i "2 i\ \t{\n\t\t\"id\": ${id},\n\t\t\"path\": ${path},\n\t\t\"title\": ${title},\n\t\t\"desc\": ${desc},\n\t\t\"cvss_score\": ${cvss_score},\n\t\t\"ref\": ${ref}\n\t}," "${file}"
+        sed -i "2 i\ \t{\n\t\t\"id\": $(printf "%q" "${id}"),\n\t\t\"path\": $(printf "%q" "${path}"),\n\t\t\"title\": $(printf "%q" "${title}"),\n\t\t\"desc\": $(printf "%q" "${desc}"),\n\t\t\"cvss_score\": $(printf "%q" "${cvss_score}"),\n\t\t\"ref\": $(printf "%q" "${ref}")\n\t}," "${file}"
     fi
+}
+
+gen_fixed_vulnerabilities_md() {
+    local package=$1
+    local file=$2
+
+    mkdir -p ${docs_dir}/fixed-vulnerabilities
+    content=$'| id | path | title | desc | cvss | ref |\n| --- | --- | --- | --- | --- | --- |'
+
+    i=0
+    vulnerability_length=$(cat "${file}" | jq ". | length")
+    while [ $i -lt ${vulnerability_length} ]; do
+        vulnerability=$(cat "${file}" | jq ".[${i}]")
+
+        id=$(echo "${vulnerability}" | jq -r ".id")
+        path=$(echo "${vulnerability}" | jq -r ".path")
+        title=$(echo "${vulnerability}" | jq -r ".title")
+        desc=$(echo "${vulnerability}" | jq -r ".desc")
+        cvss_score=$(echo "${vulnerability}" | jq ".cvss_score")
+        ref=$(echo "${vulnerability}" | jq -r ".ref")
+
+        row=$(printf "| %s | %s | %s | %s | %q | %s |" "${id//$'\n'/<br />}" "${path//$'\n'/<br />}" "${title//$'\n'/<br />}" "${desc//$'\n'/<br />}" ${cvss_score} "${ref//$'\n'/<br />}")
+        content="${content}"$'\n'"${row}"
+        i=$((i+1))
+    done
+
+    echo "${content}" > ${docs_dir}/fixed-vulnerabilities/${package}.md
 }
 
 create_srpm() {

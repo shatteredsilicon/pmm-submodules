@@ -99,6 +99,8 @@ make srpms packages="ssm-client ssm-managed grafana"
 make srpms packages="ssm-client"
 ```
 
+> **note**: if you do not want to generate vulnerability logs, you can add `ENV_DEV=1` before the command to skip it
+
 ### RPMS
 
 Run following command to generate rpms by mock, and go to folder `result/RPMS` to look for generated .rpm packages.
@@ -122,6 +124,8 @@ make rpms packages="ssm-client"
 
 This command will also generate .src.rpm in `results/SRPMS`.
 
+> **note**: if you do not want to generate vulnerability logs, you can add `ENV_DEV=1` before the command to skip it
+
 ### SSM server docker image
 
 Run following command to build SSM server docker image. 
@@ -131,6 +135,10 @@ make server
 ```
 
 An docker image called `shatteredsilicon/ssm-server-fb` will be created once this command succeed. The `tag` of this docker image is defined in file `VERSION` in the root of this project.
+
+This command will also generate .src.rpm in `results/SRPMS` and .rpm in `results/RPMS`.
+
+> **note**: if you do not want to generate vulnerability logs, you can add `ENV_DEV=1` before the command to skip it
 
 ### Clean
 
@@ -281,3 +289,8 @@ rpms: submodules srpms
     ```
 
     to build `.rpm` package and put it into `results/RPMS`.
+
+
+# See also
+
+- ##### [Fixed vulnerabilities](docs/fixed-vulnerabilities.md)
