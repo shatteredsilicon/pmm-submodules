@@ -1,74 +1,40 @@
 # ssm-submodules
 
+- [ssm-submodules](#ssm-submodules)
+  * [Requirements](#requirements)
+  * [Build](#build)
+    + [Build rpmbuild docker image](#build-rpmbuild-docker-image)
+    + [Build srpms](#build-srpms)
+    + [Build rpms](#build-rpms)
+    + [Build ssm server docker image](#build-ssm-server-docker-image)
+    + [Clean](#clean)
+    + [Show latest vulnerabilities](#show-latest-vulnerabilities)
+  * [Build srpms and rpms without Docker](#build-srpms-and-rpms-without-docker)
+    + [Requirements](#requirements-1)
+    + [Setup mock](#setup-mock)
+    + [Build srpms](#build-srpms-1)
+    + [Build rpms](#build-rpms-1)
+  * [How does the building work](#how-does-the-building-work)
+    + [Process of building srpm](#process-of-building-srpm)
+        * [Pulling the latest commit/tag of git submodules](#pulling-the-latest-commit-tag-of-git-submodules)
+        * [Determining which version to use in spec file](#determining-which-version-to-use-in-spec-file)
+        * [Downloading 3rd-party sources defined in spec file with spectool](#downloading-3rd-party-sources-defined-in-spec-file-with-spectool)
+        * [Pulling dependencies of package](#pulling-dependencies-of-package)
+        * [Building tarball](#building-tarball)
+        * [Building src.rpm](#building-srcrpm)
+    + [Process of building rpm](#process-of-building-rpm)
+        * [Building srpm first](#building-srpm-first)
+        * [Building rpm with mock](#building-rpm-with-mock)
+  * [See also](#see-also)
+
 ## Requirements
 
-- ```git``` shipped with RHEL 8
-- ```rpmbuild``` shipped with RHEL 8
-- ```spectool``` shipped with RHEL 8
-- [mock](https://github.com/rpm-software-management/mock)
-- ```golang v1.17``` shipped with RHEL 8
-- [dep](https://github.com/golang/dep)
-- ```nodejs v14``` shipped with RHEL 8
-- [yarn](https://yarnpkg.com/)
-- [Nancy](https://github.com/sonatype-nexus-community/nancy) (for checking vulnerabilities of Golang packages)
-- [jq](https://stedolan.github.io/jq/) (for parsing vulnerabilities)
-
-## Setup
-
-### setup mock
-
-- Create file `/etc/mock/templates/ssm-8.tpl` and put following content into this file.
-
-```shell
-config_opts['dnf.conf'] += """
-
-[ssm]
-name=SSM
-baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/RPMS/$basearch/
-gpgcheck=1
-enabled=1
-gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8
-
-[ssm-source]
-name=SSM Source RPMs
-baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/SRPMS
-gpgcheck=1
-enabled=0
-gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8
-
-[ssm-debug]
-name=SSM
-baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/debug/$basearch/
-gpgcheck=1
-enabled=0
-gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8
-
-"""
-```
-
-- Use command ```uname -m``` to show your host architecture, for example
-```console
-sh-4.4# uname -m
-aarch64
-```
-
-- Create file `/etc/mock/ssm-8-[your host architecture].cfg` and put following content into this file, replace all ```aarch64``` below with you host architecture first.
-
-```shell
-include('templates/rocky-8.tpl')
-include('templates/epel-8.tpl')
-include('templates/ssm-8.tpl')
-
-config_opts['root'] = 'ssm-8-aarch64'
-config_opts['description'] = 'SSM 8'
-config_opts['target_arch'] = 'aarch64'
-config_opts['legal_host_arches'] = ['aarch64']
-config_opts['module_enable'] = ['nodejs:14']
-```
+- `make` shipped with RHEL 8
+- `docker` shipped with RHEL 8
 
 ## Build
 
-### rpmbuild docker image
+### Build rpmbuild docker image
 
 Run following command to build rpmbuild docker image.
 
@@ -78,7 +44,7 @@ make rpmbuild-docker
 
 An docker image called `shatteredsilicon/rpmbuild` will be created once this command succeed.
 
-### SRPMS
+### Build srpms
 
 Run following command to generate srpms, and go to folder `result/SRPMS` to look for generated .src.rpm packages.
 
@@ -101,7 +67,7 @@ make srpms packages="ssm-client"
 
 > **note**: if you do not want to generate vulnerability logs, you can add `ENV_DEV=1` before the command to skip it
 
-### RPMS
+### Build rpms
 
 Run following command to generate rpms by mock, and go to folder `result/RPMS` to look for generated .rpm packages.
 
@@ -126,7 +92,7 @@ This command will also generate .src.rpm in `results/SRPMS`.
 
 > **note**: if you do not want to generate vulnerability logs, you can add `ENV_DEV=1` before the command to skip it
 
-### SSM server docker image
+### Build ssm server docker image
 
 Run following command to build SSM server docker image. 
 
@@ -184,6 +150,110 @@ sh-4.4# make show-vulnerabilities
 sh-4.4# 
 ```
 
+## Build srpms and rpms without Docker
+
+If for some reasons you don't want to build `srpm` and `rpm` with docker, you can follow below steps to build them without using docker
+
+### Requirements
+
+- `git` shipped with RHEL 8
+- `rpmbuild` shipped with RHEL 8
+- `spectool` shipped with RHEL 8
+- [mock](https://github.com/rpm-software-management/mock)
+- `golang` shipped with RHEL 8
+- [dep](https://github.com/golang/dep)
+- `nodejs v14` shipped with RHEL 8
+- [yarn](https://yarnpkg.com/)
+- [Nancy](https://github.com/sonatype-nexus-community/nancy) (for checking vulnerabilities of Golang packages)
+- [jq](https://stedolan.github.io/jq/) (for parsing vulnerabilities)
+
+### Setup mock
+
+- Create file `/etc/mock/templates/ssm-8.tpl` and put following content into this file.
+
+```shell
+config_opts['dnf.conf'] += """
+
+[ssm]
+name=SSM
+baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/RPMS/$basearch/
+gpgcheck=1
+enabled=1
+gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8
+
+[ssm-source]
+name=SSM Source RPMs
+baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/SRPMS
+gpgcheck=1
+enabled=0
+gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8
+
+[ssm-debug]
+name=SSM
+baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/debug/$basearch/
+gpgcheck=1
+enabled=0
+gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8
+
+"""
+```
+
+- Use command ```uname -m``` to show your host architecture, for example
+```console
+sh-4.4# uname -m
+aarch64
+```
+
+- Create file `/etc/mock/ssm-8-[your host architecture].cfg` and put following content into this file, replace all ```aarch64``` below with you host architecture first.
+
+```shell
+include('templates/rocky-8.tpl')
+include('templates/epel-8.tpl')
+include('templates/ssm-8.tpl')
+
+config_opts['root'] = 'ssm-8-aarch64'
+config_opts['description'] = 'SSM 8'
+config_opts['target_arch'] = 'aarch64'
+config_opts['legal_host_arches'] = ['aarch64']
+config_opts['module_enable'] = ['nodejs:14']
+```
+
+### Build srpms
+
+Just add `WITHOUT_DOCKER=1` before `make srpms` command, e.g.
+
+```bash
+WITHOUT_DOCKER=1 make srpms
+
+# or
+
+WITHOUT_DOCKER=1 make srpms packages="ssm-client ssm-managed grafana"
+
+# or
+
+WITHOUT_DOCKER=1 make srpms packages="ssm-client"
+```
+
+Other than that it's just the same as building with docker
+
+### Build rpms
+
+Just add `WITHOUT_DOCKER=1` before `make rpms` command, e.g.
+
+```bash
+WITHOUT_DOCKER=1 make rpms
+
+# or
+
+WITHOUT_DOCKER=1 make rpms packages="ssm-client ssm-managed grafana"
+
+# or
+
+WITHOUT_DOCKER=1 make rpms packages="ssm-client"
+```
+
+Other than that it's just the same as building with docker
+
 ## How does the building work
 
 First of all, all commands start with ```make``` are defined in ```Makefile```, and the main building commands are ```make srpms```, ```make rpms```. They are chained in this way ```make rpms -> make srpms```, just like how it defined in ```Makefile```:
@@ -196,7 +266,7 @@ rpms: submodules srpms
 	./build/bin/build-rpms $(packages)
 ```
 
-### Process of ```make srpms```
+### Process of building srpm
 
 1. ##### Pulling the latest commit/tag of git submodules
 
@@ -204,7 +274,7 @@ rpms: submodules srpms
 
     After this, it will walk through all packages defined in variable `packages` in file `build/bin/vars` and process below steps for each package.
 
-2. ##### Determining which version to use in `.spec` file
+2. ##### Determining which version to use in spec file
 
     Each directory under `sources/` has a `.spec` file in it (except for subpackages of `ssm-client`, `qan-agent`, `mysqld_exporter` etc), it will go to the correct subdirectory under `sources/` and check if current directory is a `git` directory.
 
@@ -222,7 +292,7 @@ rpms: submodules srpms
 
     PS: After the version is determined, it also check if a `%{name}-%{version}-%{release}.src.rpm` file exists in `results/SRPMS`, if it exists it will stop processing below steps.
 
-3. ##### Downloading 3rd-party sources defined in `.spec` with `spectool`
+3. ##### Downloading 3rd-party sources defined in spec file with spectool
 
     Some 3rd-party package sources need to be downloaded, it will run this command
     
@@ -246,7 +316,7 @@ rpms: submodules srpms
 
     Note there is a special package `ssm-client` which includes many subpackages in it. When pulling dependencies for it, it will pull dependencies each subpackage in a loop.
     
-    ##### 4.5 Check latest vulnerabilities
+    **4.5 Check latest vulnerabilities**
 
     The best time to check the vulnerabilities is now. It will check if it is a `node` project or a `golang` project.
 
@@ -272,15 +342,15 @@ rpms: submodules srpms
 
     to build the `src.rpm` and then copies it into `results/SRPMS/`.
 
-### Process of ```make rpms```
+### Process of building rpm
 
-1. ##### Runing the `make srpms` first
+1. ##### Building srpm first
 
     To build `.rpm` packages, it requires the `.src.rpm` exists in `result/SRPMS/` first. So it should run `make srpms` to produce those `.src.rpm` packages.
 
     See [Process of 'make srpms'](#process-of-make-srpms)
 
-2. ##### Building `.rpm` with `mock`
+2. ##### Building rpm with mock
 
     After the `.src.rpm` is built, it runs
 
@@ -291,6 +361,6 @@ rpms: submodules srpms
     to build `.rpm` package and put it into `results/RPMS`.
 
 
-# See also
+## See also
 
-- ##### [Fixed vulnerabilities](docs/fixed-vulnerabilities.md)
+- [Fixed vulnerabilities](docs/fixed-vulnerabilities.md)
