@@ -1,8 +1,9 @@
 FROM rockylinux:8
 
-RUN yum -y install epel-release nodejs
+RUN yum -y install epel-release
 RUN curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo | tee /etc/yum.repos.d/yarn.repo
-RUN yum -y install yum-utils rpmdevtools createrepo_c mock git golang yarn
+RUN dnf module enable -y nodejs:14
+RUN yum -y install nodejs yum-utils rpmdevtools createrepo_c mock git golang yarn jq python2 make gcc-c++ rsync
 
 RUN echo $' \n\
 config_opts[\'dnf.conf\'] += """ \n\
@@ -49,6 +50,7 @@ ENV GOPATH=/home/builder/go
 RUN mkdir -p ${GOPATH}/src/github.com/golang
 ADD dep ${GOPATH}/src/github.com/golang/dep
 RUN GO111MODULE=off go install -ldflags="-X main.version=v0.5.4" ${GOPATH}/src/github.com/golang/dep/cmd/dep
+RUN go install github.com/sonatype-nexus-community/nancy@latest
 ENV PATH=$PATH:${GOPATH}/bin
 
 ENV FLAVOR=rpmbuild OS=rockylinux DIST=el8
