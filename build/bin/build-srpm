@@ -197,7 +197,7 @@ pull_dep_in_place() {
             mv -f package-lock.json.pull_dep_in_place package-lock.json # restore lock file
             mv -f package.json.pull_dep_in_place package.json # restore dep file
         fi
-        npm install
+        npm install --python=python2
     fi
 }
 
@@ -221,16 +221,16 @@ check_dep_vulnerabilities() {
     mv -f Gopkg.lock Gopkg.lock.ori
     rm -rf ${tmp_dir}/go/pkg/dep/sources vendor
     GO111MODULE=off dep ensure
-    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-new
+    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > ${tmp_dir}/${package}-dep-vulnerability-new
     mv -f Gopkg.lock.ori Gopkg.lock
     rm -rf vendor ${tmp_dir}/go/pkg/dep/sources
     GO111MODULE=off dep ensure
-    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-ori
+    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > ${tmp_dir}/${package}-dep-vulnerability-ori
 
     set +o xtrace
     old_vulnerability_ids=()
     result_vulnerability_ids=()
-    gen_go_vulnerabilities ${package} /tmp/${package}-dep-vulnerability-ori /tmp/${package}-dep-vulnerability-new
+    gen_go_vulnerabilities ${package} ${tmp_dir}/${package}-dep-vulnerability-ori ${tmp_dir}/${package}-dep-vulnerability-new
     set -o xtrace
 
     # generate fixed-vulnerabilities list doc
@@ -246,12 +246,12 @@ check_dep_vulnerabilities() {
     fi
     rm -rf vendor ${tmp_dir}/go/pkg/dep/sources
     GO111MODULE=off dep ensure
-    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > /tmp/${package}-dep-vulnerability-pmm
+    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > ${tmp_dir}/${package}-dep-vulnerability-pmm
 
     set +o xtrace
     old_vulnerability_ids=()
     result_vulnerability_ids=()
-    gen_go_vulnerabilities ${package} /tmp/${package}-dep-vulnerability-ori /tmp/${package}-dep-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-go.json
+    gen_go_vulnerabilities ${package} ${tmp_dir}/${package}-dep-vulnerability-ori ${tmp_dir}/${package}-dep-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     set -o xtrace
 
@@ -277,16 +277,16 @@ check_mod_vulnerabilities() {
 
     mv -f go.sum go.sum.ori
     GO111MODULE=on go mod vendor
-    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > /tmp/${package}-mod-vulnerability-new
+    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-new
     mv -f go.sum.ori go.sum
     rm -rf vendor
     GO111MODULE=on go mod vendor
-    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > /tmp/${package}-mod-vulnerability-ori
+    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-ori
 
     set +o xtrace
     old_vulnerability_ids=()
     result_vulnerability_ids=()
-    gen_go_vulnerabilities ${package} /tmp/${package}-mod-vulnerability-ori /tmp/${package}-mod-vulnerability-new
+    gen_go_vulnerabilities ${package} ${tmp_dir}/${package}-mod-vulnerability-ori ${tmp_dir}/${package}-mod-vulnerability-new
     set -o xtrace
 
     # generate fixed-vulnerabilities list doc
@@ -302,12 +302,12 @@ check_mod_vulnerabilities() {
     fi
     rm -rf vendor
     GO111MODULE=on go mod vendor
-    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > /tmp/${package}-mod-vulnerability-pmm
+    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-pmm
 
     set +o xtrace
     old_vulnerability_ids=()
     result_vulnerability_ids=()
-    gen_go_vulnerabilities ${package} /tmp/${package}-mod-vulnerability-ori /tmp/${package}-mod-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-go.json
+    gen_go_vulnerabilities ${package} ${tmp_dir}/${package}-mod-vulnerability-ori ${tmp_dir}/${package}-mod-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     set -o xtrace
 
@@ -326,16 +326,16 @@ check_npm_vulnerabilities() {
     fi
 
     yarn import
-    yarn audit --json > /tmp/${package}-npm-vulnerability-ori
+    yarn audit --json > ${tmp_dir}/${package}-npm-vulnerability-ori
     rm -f package-lock.json
     yarn
-    yarn audit --json > /tmp/${package}-npm-vulnerability-new
+    yarn audit --json > ${tmp_dir}/${package}-npm-vulnerability-new
     rm -f yarn.lock
 
     set +o xtrace
     old_vulnerability_ids=()
     result_vulnerability_ids=()
-    gen_node_vulnerabilities ${package} /tmp/${package}-npm-vulnerability-ori /tmp/${package}-npm-vulnerability-new
+    gen_node_vulnerabilities ${package} ${tmp_dir}/${package}-npm-vulnerability-ori ${tmp_dir}/${package}-npm-vulnerability-new
     set -o xtrace
 
     # generate fixed-vulnerabilities list doc
@@ -349,12 +349,12 @@ check_npm_vulnerabilities() {
         return
     fi
     yarn import
-    yarn audit --json > /tmp/${package}-npm-vulnerability-pmm
+    yarn audit --json > ${tmp_dir}/${package}-npm-vulnerability-pmm
 
     set +o xtrace
     old_vulnerability_ids=()
     result_vulnerability_ids=()
-    gen_node_vulnerabilities ${package} /tmp/${package}-npm-vulnerability-ori /tmp/${package}-npm-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-node.json
+    gen_node_vulnerabilities ${package} ${tmp_dir}/${package}-npm-vulnerability-ori ${tmp_dir}/${package}-npm-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     set -o xtrace
 
@@ -372,15 +372,15 @@ check_yarn_vulnerabilities() {
         return
     fi
 
-    yarn audit --json > /tmp/${package}-yarn-vulnerability-ori
+    yarn audit --json > ${tmp_dir}/${package}-yarn-vulnerability-ori
     rm -f yarn.lock
     yarn
-    yarn audit --json > /tmp/${package}-yarn-vulnerability-new
+    yarn audit --json > ${tmp_dir}/${package}-yarn-vulnerability-new
 
     set +o xtrace
     old_vulnerability_ids=()
     result_vulnerability_ids=()
-    gen_node_vulnerabilities ${package} /tmp/${package}-yarn-vulnerability-ori /tmp/${package}-yarn-vulnerability-new
+    gen_node_vulnerabilities ${package} ${tmp_dir}/${package}-yarn-vulnerability-ori ${tmp_dir}/${package}-yarn-vulnerability-new
     set -o xtrace
 
     # generate fixed-vulnerabilities list doc
@@ -393,12 +393,12 @@ check_yarn_vulnerabilities() {
         set -o errexit
         return
     fi
-    yarn audit --json > /tmp/${package}-yarn-vulnerability-pmm
+    yarn audit --json > ${tmp_dir}/${package}-yarn-vulnerability-pmm
 
     set +o xtrace
     old_vulnerability_ids=()
     result_vulnerability_ids=()
-    gen_node_vulnerabilities ${package} /tmp/${package}-yarn-vulnerability-ori /tmp/${package}-yarn-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-node.json
+    gen_node_vulnerabilities ${package} ${tmp_dir}/${package}-yarn-vulnerability-ori ${tmp_dir}/${package}-yarn-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     set -o xtrace
 
