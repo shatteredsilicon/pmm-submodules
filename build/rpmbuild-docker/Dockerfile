@@ -38,7 +38,8 @@ include(\'templates/ssm-8.tpl\') \n\
 config_opts[\'root\'] = \'ssm-8-'$(rpm --eval "%{_arch}")$'\' \n\
 config_opts[\'description\'] = \'SSM 8\' \n\
 config_opts[\'target_arch\'] = \''$(rpm --eval "%{_arch}")$'\' \n\
-config_opts[\'legal_host_arches\'] = (\''$(rpm --eval "%{_arch}")$'\',) \n\
+config_opts[\'legal_host_arches\'] = [\''$(rpm --eval "%{_arch}")$'\'] \n\
+config_opts[\'module_enable\'] = [\'nodejs:14\'] \n\
 ' > /etc/mock/ssm-8-$(rpm --eval "%{_arch}").cfg
 
 RUN useradd builder -u 1000 -m -G users,wheel,mock && \
