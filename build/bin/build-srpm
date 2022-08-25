@@ -445,7 +445,7 @@ gen_go_vulnerabilities() {
             ref=$(echo "${vulnerability}" | jq ".Reference")
 
             # check if cvss_score is a vaild positive number
-            cvss_score=$(echo "${vulnerability}" | jq ".CvssScore")
+            cvss_score=$(echo "${vulnerability}" | jq -r ".CvssScore") # it's string value, use -r to get raw decimal value between quotes
             re='^[0-9]+([.][0-9]+)?$'
             if ! [[ $cvss_score =~ $re ]] ; then
                 cvss_score=0
