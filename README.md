@@ -102,6 +102,18 @@ make server
 
 An docker image called `shatteredsilicon/ssm-server-fb` will be created once this command succeed. The `tag` of this docker image is defined in file `VERSION` in the root of this project.
 
+There are 2 ENV variables for this command.
+
+- `DOCKER_TAG` for setting a custom docker tag
+- `PUSH_DOCKER` for pushing the docker image to docker hub
+
+e.g.
+```bash
+DOCKER_TAG=foo/bar:latest make server
+# or
+PUSH_DOCKER=1 make server
+```
+
 This command will also generate .src.rpm in `results/SRPMS` and .rpm in `results/RPMS`.
 
 > **note**: if you do not want to generate vulnerability logs, you can add `ENV_DEV=1` before the command to skip it
