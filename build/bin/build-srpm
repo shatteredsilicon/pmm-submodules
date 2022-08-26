@@ -381,7 +381,7 @@ check_yarn_vulnerabilities() {
         mv -f ${local_lockfile} yarn.lock
     elif [[ -d .git ]] || [[ -f .git ]]; then
         git checkout pmm-1.x yarn.lock
-        git checkout pmm-1.x package.lock
+        git checkout pmm-1.x package.json
     else
         set -o errexit
         return
