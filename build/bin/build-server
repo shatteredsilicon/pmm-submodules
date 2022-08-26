@@ -44,15 +44,8 @@ build() {
 
     if [ -z "${DOCKER_TAG}" ]; then
         docker build --squash --no-cache -t shatteredsilicon/ssm-server:${ssm_version} -t shatteredsilicon/ssm-server:latest ${server_build_dir}/
-        if [ -n "${PUSH_DOCKER}" ]; then
-            docker push shatteredsilicon/ssm-server:${ssm_version}
-            docker push shatteredsilicon/ssm-server:latest
-        fi
     else
         docker build --squash --no-cache -t ${DOCKER_TAG} ${server_build_dir}/
-        if [ -n "${PUSH_DOCKER}" ]; then
-            docker push ${DOCKER_TAG}
-        fi
     fi
 }
 
