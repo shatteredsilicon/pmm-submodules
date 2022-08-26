@@ -29,7 +29,6 @@ copy_specs() {
 
     pushd ${submodule_dir}/$package
         if [ -n "${version}" ]; then
-            git checkout $version
             sed "s/%{_version}/${version}/g" ${package}.spec > ${tmp_dir}/rpmbuild/SPECS/${package}.spec
         else
             cp -f ${package}.spec ${tmp_dir}/rpmbuild/SPECS/
@@ -64,10 +63,6 @@ build_generic_tarball() {
             echo "${tarball} exists, skipped"
             return
         else
-            if [ -n "${version}" ]; then
-                git checkout $version
-            fi
-
             pull_dep_in_place $package
         fi
     popd
@@ -88,8 +83,6 @@ build_ssm_client_tarball() {
             if [ -f "${subdir}/${sub_package}-${tag}.tar.gz" ]; then
                 echo "${sub_package}-${tag}.tar.gz exists, skipped"
             else
-                git checkout $tag
-
                 pull_dep_in_place $sub_package
 
                 tar czf ${subdir}/${sub_package}-${tag}.tar.gz ../${sub_package}

@@ -1,7 +1,7 @@
 all: server
 
 submodules:
-	git submodule update --init --remote --force
+	git submodule update --init --force
 	git submodule foreach --recursive 'git clean -f -d'
 	git submodule foreach --recursive 'git fetch origin --tags -f'
 
