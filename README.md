@@ -94,25 +94,15 @@ This command will also generate .src.rpm in `results/SRPMS`.
 
 ### Build ssm server docker image
 
-Run following command to build SSM server docker image. 
+Run following command to build SSM server docker image, and use `DOCKER_TAG` env variable if you want a custom docker tag. 
 
 ```bash
 make server
-```
-
-An docker image called `shatteredsilicon/ssm-server-fb` will be created once this command succeed. The `tag` of this docker image is defined in file `VERSION` in the root of this project.
-
-There are 2 ENV variables for this command.
-
-- `DOCKER_TAG` for setting a custom docker tag
-- `PUSH_DOCKER` for pushing the docker image to docker hub
-
-e.g.
-```bash
-DOCKER_TAG=foo/bar:latest make server
 # or
-PUSH_DOCKER=1 make server
+DOCKER_TAG=foo/bar:latest make server
 ```
+
+An docker image called `shatteredsilicon/ssm-server` (or `${DOCKER_TAG}`) will be created once this command succeed. The `tag` of this docker image is defined in file `VERSION` in the root of this project.
 
 This command will also generate .src.rpm in `results/SRPMS` and .rpm in `results/RPMS`.
 
