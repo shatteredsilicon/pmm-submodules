@@ -179,6 +179,7 @@ pull_dep_in_place() {
             mv -f go.mod.pull_dep_in_place go.mod # restore dep file
         fi
 
+        GO111MODULE=on go mod tidy
         GO111MODULE=on go mod vendor
     elif [[ -f package.json ]]; then
         export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
@@ -269,10 +270,12 @@ check_mod_vulnerabilities() {
     fi
 
     mv -f go.sum go.sum.ori
+    GO111MODULE=on go mod tidy
     GO111MODULE=on go mod vendor
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-new
     mv -f go.sum.ori go.sum
     rm -rf vendor
+    GO111MODULE=on go mod tidy
     GO111MODULE=on go mod vendor
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-ori
 
@@ -294,6 +297,7 @@ check_mod_vulnerabilities() {
         return
     fi
     rm -rf vendor
+    GO111MODULE=on go mod tidy
     GO111MODULE=on go mod vendor
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-pmm
 
