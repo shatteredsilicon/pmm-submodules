@@ -29,7 +29,6 @@ copy_specs() {
 
     pushd ${submodule_dir}/$package
         if [ -n "${version}" ]; then
-            git checkout $version
             sed "s/%{_version}/${version}/g" ${package}.spec > ${tmp_dir}/rpmbuild/SPECS/${package}.spec
         else
             cp -f ${package}.spec ${tmp_dir}/rpmbuild/SPECS/
@@ -64,10 +63,6 @@ build_generic_tarball() {
             echo "${tarball} exists, skipped"
             return
         else
-            if [ -n "${version}" ]; then
-                git checkout $version
-            fi
-
             pull_dep_in_place $package
         fi
     popd
@@ -88,8 +83,6 @@ build_ssm_client_tarball() {
             if [ -f "${subdir}/${sub_package}-${tag}.tar.gz" ]; then
                 echo "${sub_package}-${tag}.tar.gz exists, skipped"
             else
-                git checkout $tag
-
                 pull_dep_in_place $sub_package
 
                 tar czf ${subdir}/${sub_package}-${tag}.tar.gz ../${sub_package}
@@ -186,6 +179,7 @@ pull_dep_in_place() {
             mv -f go.mod.pull_dep_in_place go.mod # restore dep file
         fi
 
+        GO111MODULE=on go mod tidy
         GO111MODULE=on go mod vendor
     elif [[ -f package.json ]]; then
         export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
@@ -276,10 +270,12 @@ check_mod_vulnerabilities() {
     fi
 
     mv -f go.sum go.sum.ori
+    GO111MODULE=on go mod tidy
     GO111MODULE=on go mod vendor
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-new
     mv -f go.sum.ori go.sum
     rm -rf vendor
+    GO111MODULE=on go mod tidy
     GO111MODULE=on go mod vendor
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-ori
 
@@ -301,6 +297,7 @@ check_mod_vulnerabilities() {
         return
     fi
     rm -rf vendor
+    GO111MODULE=on go mod tidy
     GO111MODULE=on go mod vendor
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-pmm
 
@@ -388,7 +385,7 @@ check_yarn_vulnerabilities() {
         mv -f ${local_lockfile} yarn.lock
     elif [[ -d .git ]] || [[ -f .git ]]; then
         git checkout pmm-1.x yarn.lock
-        git checkout pmm-1.x package.lock
+        git checkout pmm-1.x package.json
     else
         set -o errexit
         return
