@@ -1,9 +1,16 @@
 FROM rockylinux:8
 
 RUN yum -y install epel-release
-RUN curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo | tee /etc/yum.repos.d/yarn.repo
 RUN dnf module enable -y nodejs:14
-RUN yum -y install nodejs yum-utils rpmdevtools createrepo_c mock git golang yarn jq python2 make gcc-c++ rsync
+RUN yum -y --allowerasing install nodejs yum-utils rpmdevtools createrepo_c mock git golang \
+        jq python2 make gcc-c++ rsync clamav clamav-update rkhunter coreutils
+
+RUN useradd builder -u 1000 -m -G users,wheel,mock && \
+    chmod 755 /home/builder
+RUN (rkhunter --update || true) && rkhunter --propupd
+
+RUN curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo | tee /etc/yum.repos.d/yarn.repo
+RUN yum -y install yarn
 
 RUN echo $' \n\
 config_opts[\'dnf.conf\'] += """ \n\
@@ -42,17 +49,16 @@ config_opts[\'legal_host_arches\'] = [\''$(rpm --eval "%{_arch}")$'\'] \n\
 config_opts[\'module_enable\'] = [\'nodejs:14\'] \n\
 ' > /etc/mock/ssm-8-$(rpm --eval "%{_arch}").cfg
 
-RUN useradd builder -u 1000 -m -G users,wheel,mock && \
-    chmod 755 /home/builder && \
-    chown -R builder:builder /home/builder
-USER builder
-
 ENV GOPATH=/home/builder/go
 RUN mkdir -p ${GOPATH}/src/github.com/golang
 ADD dep ${GOPATH}/src/github.com/golang/dep
 RUN GO111MODULE=off go install -ldflags="-X main.version=v0.5.4" ${GOPATH}/src/github.com/golang/dep/cmd/dep
 RUN go install github.com/sonatype-nexus-community/nancy@latest
-ENV PATH=$PATH:${GOPATH}/bin
+RUN chown -R builder:builder /home/builder
 
-ENV FLAVOR=rpmbuild OS=rockylinux DIST=el8
+RUN freshclam && clamscan -i -r --exclude-dir="^/sys/" /
+RUN rkhunter --propupd uname && rkhunter --check --disable system_configs_syslog --disable avail_modules --disable passwd_changes --disable group_changes
+
+USER builder
+ENV FLAVOR=rpmbuild OS=rockylinux DIST=el8 PATH=$PATH:${GOPATH}/bin
 WORKDIR /home/builder
