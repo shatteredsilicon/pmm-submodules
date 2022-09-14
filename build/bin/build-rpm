@@ -25,7 +25,7 @@ build_rpm() {
     local version=$2
 
     if [ -n "${version}" ]; then
-        mock -r ssm-8-$(rpm --eval "%{_arch}") --resultdir ${rpm_dir} --rebuild ${srpm_dir}/${package}-${version}*.src.rpm
+        mock -r ssm-8-$(rpm --eval "%{_arch}") --resultdir ${rpm_dir} --rebuild ${srpm_dir}/${package}-${version##v}*.src.rpm
     else
         mock -r ssm-8-$(rpm --eval "%{_arch}") --resultdir ${rpm_dir} --rebuild ${srpm_dir}/${package}*.src.rpm
     fi
@@ -41,13 +41,13 @@ create_rpm() {
 
     pushd ${submodule_dir}/$package
         if [[ -d .git ]] || [[ -f .git ]]; then
-            version=$(git tag -l --sort=-version:refname "v*" --merged | head -n 1)
+            version=$(git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1)
         fi
     popd
 
     local rpm_filename=
     if [ -n "${version}" ]; then
-        rpm_filename="$(rpmquery ${srpm_dir}/${package}-${version}*.src.rpm).rpm"
+        rpm_filename="$(rpmquery ${srpm_dir}/${package}-${version##v}*.src.rpm).rpm"
     else
         rpm_filename="$(rpmquery ${srpm_dir}/${package}*.src.rpm).rpm"
     fi

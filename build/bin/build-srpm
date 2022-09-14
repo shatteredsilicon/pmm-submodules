@@ -29,7 +29,7 @@ copy_specs() {
 
     pushd ${submodule_dir}/$package
         if [ -n "${version}" ]; then
-            sed "s/%{_version}/${version}/g" ${package}.spec > ${tmp_dir}/rpmbuild/SPECS/${package}.spec
+            sed "s/%{_version}/${version##v}/g" ${package}.spec > ${tmp_dir}/rpmbuild/SPECS/${package}.spec
         else
             cp -f ${package}.spec ${tmp_dir}/rpmbuild/SPECS/
         fi
@@ -53,7 +53,7 @@ build_generic_tarball() {
     local tarball=
 
     if [ -n "${version}" ]; then
-        tarball="${package}-${version}.tar.gz"
+        tarball="${package}-${version##v}.tar.gz"
     else
         tarball="${package}.tar.gz"
     fi
@@ -79,19 +79,19 @@ build_ssm_client_tarball() {
     mkdir -p $subdir
     for sub_package in ${sub_packages[@]}; do
         pushd ${submodule_dir}/$sub_package
-            local tag=$(git tag -l --sort=-version:refname "v*" --merged | head -n 1)
-            if [ -f "${subdir}/${sub_package}-${tag}.tar.gz" ]; then
-                echo "${sub_package}-${tag}.tar.gz exists, skipped"
+            local tag=$(git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1)
+            if [ -f "${subdir}/${sub_package}-${tag##v}.tar.gz" ]; then
+                echo "${sub_package}-${tag##v}.tar.gz exists, skipped"
             else
                 pull_dep_in_place $sub_package
 
-                tar czf ${subdir}/${sub_package}-${tag}.tar.gz ../${sub_package}
+                tar czf ${subdir}/${sub_package}-${tag##v}.tar.gz ../${sub_package}
             fi
         popd
     done
 
     pushd ${tmp_dir}/rpmbuild/SOURCES
-        tar -czf ${name}-${version}.tar.gz ${name}
+        tar -czf ${name}-${version##v}.tar.gz ${name}
         rm -rf ${name}
     popd
 }
@@ -620,7 +620,7 @@ create_srpm() {
 
     pushd ${submodule_dir}/$package
         if [[ -d .git ]] || [[ -f .git ]]; then
-            version=$(git tag -l --sort=-version:refname "v*" --merged | head -n 1)
+            version=$(git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1)
         else
             cp -ar * ${tmp_dir}/rpmbuild/SOURCES/
             rm -f ${tmp_dir}/rpmbuild/SOURCES/${package}.spec
