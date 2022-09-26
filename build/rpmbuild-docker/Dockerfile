@@ -14,26 +14,11 @@ RUN yum -y install yarn
 
 RUN echo $' \n\
 config_opts[\'dnf.conf\'] += """ \n\
-[ssm] \n\
-name=SSM \n\
-baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/RPMS/$basearch/ \n\
-gpgcheck=1 \n\
-enabled=1 \n\
-gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8 \n\
- \n\
-[ssm-source] \n\
-name=SSM Source RPMs \n\
-baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/SRPMS \n\
-gpgcheck=1 \n\
-enabled=0 \n\
-gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8 \n\
- \n\
-[ssm-debug] \n\
-name=SSM \n\
-baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/debug/$basearch/ \n\
-gpgcheck=1 \n\
-enabled=0 \n\
-gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8 \n\
+[phantomjs] \n\
+name = Repo for phantomjs \n\
+baseurl = https://ftp.redsleeve.org/pub/misc/phantomjs/$basearch/ \n\
+gpgcheck = 0 \n\
+enabled = 1 \n\
 """ \n\
 ' > /etc/mock/templates/ssm-8.tpl
 
