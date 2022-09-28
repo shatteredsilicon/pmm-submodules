@@ -25,12 +25,6 @@
         - python2-pip
         - rpm-cron
 
-    - name: Packages                   | Install EL6 or EL7 tools
-      when: ansible_os_family == 'RedHat' and (ansible_distribution_major_version == "6" or ansible_distribution_major_version == "7")
-      yum: name={{ item }} state=installed
-      with_items:
-        - yum-cron
-
     - name: cloud-init                 | Create dirs
       file: path={{ item }} state=directory
       with_items:
@@ -42,20 +36,6 @@
       with_items:
         - /opt/prometheus/data
         - /opt/consul-data
-
-    - name: cloud-init                 | Configure yum-cron
-      when: ansible_os_family == 'RedHat' and (ansible_distribution_major_version == "6" or ansible_distribution_major_version == "7")
-      replace:
-        dest: /etc/yum/yum-cron-hourly.conf
-        regexp: 'update_cmd = default'
-        replace: 'update_cmd = minimal-security'
-
-    - name: cloud-init                 | Configure yum-cron
-      when: ansible_os_family == 'RedHat' and (ansible_distribution_major_version == "6" or ansible_distribution_major_version == "7")
-      replace:
-        dest: /etc/yum/yum-cron.conf
-        regexp: 'update_cmd = default'
-        replace: 'update_cmd = minimal-security'
 
     - name: Percona Server for MySQL   | Install Python Modules
       when: ansible_os_family == 'RedHat'
@@ -107,16 +87,6 @@
         group: grafana
         home: /etc/grafana
         shell: /sbin/nologin
-
-    # - name: SSM                        | Add SSM Server YUM repository
-    #   when: ansible_os_family == 'RedHat'
-    #   yum_repository:
-    #     name: pmm
-    #     description: PMM Server YUM repository - x86_64
-    #     baseurl: https://repo.percona.com/pmm/7/RPMS/x86_64/
-    #     gpgcheck: yes
-    #     enabled: no
-    #     gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-Percona
 
     - name: SSM                        | Add local YUM repository
       when: ansible_os_family == 'RedHat'

@@ -144,6 +144,19 @@
     - name: SSM                        | Stop services
       shell: supervisorctl shutdown
 
+    - name: SSM                        | Remove OS tools
+      when: ansible_os_family == 'RedHat'
+      yum: name={{ item }} state=removed
+      with_items:
+        - yum-utils
+        - python2-pip
+
+    - name: MariaDB                    | Remove Python Modules
+      pip:
+        name:
+          - PyMySQL
+        state: absent
+
     - name: SSM                        | Cleanup yum cache
       shell: yum clean all
 
