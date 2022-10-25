@@ -28,7 +28,7 @@ Percona Toolkit
 mkdir -p %{_GOPATH}/bin
 export GOPATH=%{_GOPATH}
 
-go build ./src/go/pt-mongodb-summary
+go build -ldflags="-s -w" ./src/go/pt-mongodb-summary
 %{__cp} pt-mongodb-summary %{_GOPATH}/bin
 %{__cp} bin/pt-mysql-summary %{_GOPATH}/bin
 %{__cp} bin/pt-summary %{_GOPATH}/bin

@@ -196,7 +196,7 @@ export GOCOMPILER='GO111MODULE=off go build -ldflags "$LDFLAGS"'
 %endif
 %endif
 
-export LDFLAGS=""
+export LDFLAGS="-s -w"
 %if 0%{?with_debug}
 %if %{isgccgoarch}
 export OLD_RPM_OPT_FLAGS="$RPM_OPT_FLAGS"
