@@ -11,6 +11,12 @@ srpms: submodules
 rpms: submodules srpms
 	./build/bin/build-rpms $(packages)
 
+debs: submodules
+	./build/bin/build-debs $(packages)
+
+sdebs: submodules
+	./build/bin/build-sdebs $(packages)
+
 server: submodules rpms
 	./build/bin/build-server
 

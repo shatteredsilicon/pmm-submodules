@@ -1,0 +1,85 @@
+#!/bin/bash
+
+set -o errexit
+set -o xtrace
+
+. $(dirname $0)/vars
+
+usage () {
+    cat <<EOF
+Usage: $0 [OPTIONS] PACKAGE
+
+    The following options may be given :
+        --help) usage ;;
+
+    The following packages may be given:
+        ${PACKAGES[@]}
+
+Example $0 ssm-client
+EOF
+        exit 1
+}
+
+build_deb() {
+    local package=$1
+    local version=
+    local build_dir=
+
+    if [ "$package" != "ssm-client" ]; then
+        echo 'deb packaging is only allowed for ssm-client'
+        exit 1
+    fi
+
+    pushd ${submodule_dir}/${package}
+        if [[ -d .git ]] || [[ -f .git ]]; then
+            version=$(git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1)
+        else
+            echo "can't read version from git tag"
+            exit 1
+        fi
+    popd
+
+    if ! compgen -G  "${sdeb_dir}/${package}_${version##v}*.dsc" > /dev/null; then
+        echo "sdeb files not exist"
+        exit 1
+    fi
+
+    build_dir=${tmp_dir}/debbuild/DEB
+    mkdir -p ${build_dir}
+    cp ${sdeb_dir}/${package}_${version##v}*.dsc ${build_dir}
+    cp ${sdeb_dir}/${package}_${version##v}*.tar.gz ${build_dir}
+
+    pushd ${build_dir}
+        dpkg-source -x ${sdeb_dir}/${package}_${version##v}*.dsc
+        pushd ${package}-${version##v}
+            dpkg-buildpackage -b -uc
+        popd
+
+        mkdir -p ${deb_dir}
+        mv ${tmp_dir}/debbuild/DEB/${package}_${version##v}*.deb ${deb_dir}
+        mv ${tmp_dir}/debbuild/DEB/${package}_${version##v}*.changes ${deb_dir}
+    popd
+
+    rm -rf ${tmp_dir}/debbuild/DEB/${package}*
+}
+
+main() {
+    local package=
+
+    for arg do
+        val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
+        case "$arg" in
+            --help)         usage ;;
+            -*)             usage ;;
+            *)              package="$val" ;;
+        esac
+    done
+
+    if [ -z "$package" ]; then
+        usage
+    fi
+
+    build_deb $package
+}
+
+main $@
