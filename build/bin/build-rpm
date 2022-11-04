@@ -23,11 +23,12 @@ EOF
 build_rpm() {
     local package=$1
     local version=$2
+    local arch=$(rpm --eval "%{_arch}")
 
     if [ -n "${version}" ]; then
-        mock -r ssm-8-$(rpm --eval "%{_arch}") --resultdir ${rpm_dir} --rebuild ${srpm_dir}/${package}-${version##v}*.src.rpm
+        mock -r ssm-8-${arch} --config-opts root=ssm-8-${arch}-$(tr -dc A-Za-z0-9 </dev/urandom | head -c 13) --resultdir ${rpm_dir} --rebuild ${srpm_dir}/${package}-${version##v}*.src.rpm
     else
-        mock -r ssm-8-$(rpm --eval "%{_arch}") --resultdir ${rpm_dir} --rebuild ${srpm_dir}/${package}*.src.rpm
+        mock -r ssm-8-${arch} --config-opts root=ssm-8-${arch}-$(tr -dc A-Za-z0-9 </dev/urandom | head -c 13) --resultdir ${rpm_dir} --rebuild ${srpm_dir}/${package}*.src.rpm
     fi
 
     rm -f ${rpm_dir}/${package}*.src.rpm ${rpm_dir}/*.log

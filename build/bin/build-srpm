@@ -20,9 +20,6 @@ EOF
         exit 1
 }
 
-old_vulnerability_ids=()
-result_vulnerability_ids=()
-
 copy_specs() {
     local package=$1
     local version=$2
@@ -58,49 +55,59 @@ build_generic_tarball() {
         tarball="${package}.tar.gz"
     fi
 
-    pushd ${submodule_dir}/${package}/${workdir}
+    local wrap_dir=${tmp_dir}/${package}-wrap
+    cp -r ${submodule_dir}/$package ${wrap_dir}
+    pushd ${wrap_dir}
         if [ -f "${tmp_dir}/rpmbuild/SOURCES/${tarball}" ]; then
             echo "${tarball} exists, skipped"
             return
         else
-            pull_dep_in_place $package
+            pull_dep_in_place $package "" ${workdir}
         fi
     popd
 
-    tar -C ${submodule_dir} -czf ${tmp_dir}/rpmbuild/SOURCES/${tarball} ${package}
+    tar -C $(dirname ${wrap_dir}) -czf ${tmp_dir}/rpmbuild/SOURCES/${tarball} --transform "s/$(basename ${wrap_dir})/${package}/" $(basename ${wrap_dir})
+    rm -rf ${wrap_dir}
 }
 
 build_ssm_client_tarball() {
     local name=$1
     local version=$2
     local sub_packages=(mongodb_exporter mysqld_exporter postgres_exporter proxysql_exporter pid-watchdog qan-agent node_exporter ssm-client)
-    local subdir=${tmp_dir}/rpmbuild/SOURCES/${name}
+    local subdir=${tmp_dir}/rpmbuild/SOURCES/${name}-parent
 
     mkdir -p $subdir
+    local pids=()
     for sub_package in ${sub_packages[@]}; do
-        pushd ${submodule_dir}/$sub_package
+        local work_dir=${tmp_dir}/${name}-${sub_package}
+        cp -r ${submodule_dir}/$sub_package ${work_dir}
+        pushd ${work_dir}
             local tag=$(git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1)
             if [ -f "${subdir}/${sub_package}-${tag##v}.tar.gz" ]; then
                 echo "${sub_package}-${tag##v}.tar.gz exists, skipped"
             else
-                pull_dep_in_place $sub_package
-
-                tar czf ${subdir}/${sub_package}-${tag##v}.tar.gz ../${sub_package}
+                pull_dep_in_place $sub_package && tar -C $(dirname ${work_dir}) -czf ${subdir}/${sub_package}-${tag##v}.tar.gz --transform "s/$(basename ${work_dir})/${sub_package}/" $(basename ${work_dir}) & pids+=($!)
             fi
         popd
     done
+    for pid in "${pids[@]}"; do
+        wait "${pid}"
+    done
+    for sub_package in ${sub_packages[@]}; do
+        rm -rf ${tmp_dir}/${name}-${sub_package}
+    done
 
     pushd ${tmp_dir}/rpmbuild/SOURCES
-        tar -czf ${name}-${version##v}.tar.gz ${name}
+        tar -C $(dirname ${subdir}) -czf ${name}-${version##v}.tar.gz --transform "s/$(basename ${subdir})/${name}/" $(basename ${subdir})
         rm -rf ${name}
     popd
+    rm -rf ${subdir}
 }
 
 build_3rd_tallbar() {
     local package=$1
     local dep_src=$2
     local dep_dest=$3
-    local ignore_error=$4
 
     pushd ${tmp_dir}/rpmbuild/SOURCES
         local tarball=$(find . -maxdepth 1 -type f -iname "${package}*.tar.gz" | head -1)
@@ -117,10 +124,11 @@ build_3rd_tallbar() {
                 cp ${dep_src} ${package_dir}/${dep_dest}
             fi
             pushd ${package_dir}
-                pull_dep_in_place $package "${local_lockfile}" $ignore_error
+                pull_dep_in_place $package "${local_lockfile}"
             popd
             rm -f ${tarball}
             tar -czf ${tarball} ${package_dir}
+            rm -rf ${package_dir}
         fi
     popd
 }
@@ -128,8 +136,9 @@ build_3rd_tallbar() {
 pull_dep_in_place() {
     local package=$1
     local local_lockfile=$2
-    local ignore_error=$3
+    local workdir=$3
     local is_excluded=0
+    local current_dir=$(pwd)
 
     local excluded_packages=(node-sass)
     [[ " ${excluded_packages[*]} " == *" ${package} "* ]] && is_excluded=1
@@ -137,68 +146,94 @@ pull_dep_in_place() {
     # make sure logs dir exists
     mkdir -p ${logs_dir}/{vulnerability-diffs,fixed-vulnerabilities}
 
-    if [[ -f yarn.lock ]]; then
+    if [[ -f ${workdir:+$workdir/}yarn.lock ]]; then
+        local yarn_cache_path=${tmp_dir}/yarn/${package}-cache
         export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
+        export npm_config_python=/usr/bin/python2
 
         if [[ $is_excluded -eq 0 ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
-            cp -f yarn.lock yarn.lock.pull_dep_in_place # backup lock file
-            cp -f package.json package.json.pull_dep_in_place # backup dep file
-            check_yarn_vulnerabilities $package $local_lockfile
-            mv -f yarn.lock.pull_dep_in_place yarn.lock # restore lock file
-            mv -f package.json.pull_dep_in_place package.json # restore lock file
+            cp -r ${current_dir} ${tmp_dir}/${package}
+            pushd ${tmp_dir}/${package}/${workdir}
+                check_yarn_vulnerabilities $package $local_lockfile $workdir &
+            popd
         fi
 
-        if [ -n "${ignore_error}" ]; then
-            yarn || true
-        else
-            yarn
-        fi
-    elif [[ -f Gopkg.toml ]]; then
-        export GOPATH=${tmp_dir}/go
-        package_path=${tmp_dir}/go/src/$(git_url_to_import_path $(git remote get-url origin))
-        mkdir -p $(dirname ${package_path})
-        ln -sfF ${submodule_dir}/$package ${package_path}
-        pushd ${package_path}
-            if [[ $is_excluded -eq 0 ]] && [[ -f Gopkg.lock ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
-                cp -f Gopkg.lock Gopkg.lock.pull_dep_in_place # backup lock file
-                cp -f Gopkg.toml Gopkg.toml.pull_dep_in_place # backup dep file
-                check_dep_vulnerabilities $package $local_lockfile
-                mv -f Gopkg.lock.pull_dep_in_place Gopkg.lock # restore lock file
-                mv -f Gopkg.toml.pull_dep_in_place Gopkg.toml # restore dep file
-            fi
-
-            rm -rf ${tmp_dir}/go/pkg/dep/sources vendor
-            GO111MODULE=off dep ensure
+        pushd ./${workdir}
+            for i in 1 2 3 ; do
+                yarn --cache-folder ${yarn_cache_path} --no-progress --emoji false --silent --ignore-scripts --network-timeout 300000 && break
+                sleep 5
+            done
         popd
-    elif [[ -f go.mod ]]; then
-        if [[ $is_excluded -eq 0 ]] && [[ -f go.sum ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
-            cp -f go.sum go.sum.pull_dep_in_place # backup lock file
-            cp -f go.mod go.mod.pull_dep_in_place # backup dep file
-            check_mod_vulnerabilities $package $local_lockfile
-            mv -f go.sum.pull_dep_in_place go.sum # restore lock file
-            mv -f go.mod.pull_dep_in_place go.mod # restore dep file
+    elif [[ -f ${workdir:+$workdir/}Gopkg.toml ]]; then
+        local GOPATH=${tmp_dir}/go/${package}
+        export GOPATH=${GOPATH}
+
+        package_src=$(git_url_to_import_path $(git remote get-url origin))
+
+        if [[ $is_excluded -eq 0 ]] && [[ -f Gopkg.lock ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
+            cp -r ${current_dir} ${tmp_dir}/${package}
+            vulnerability_package_path=${tmp_dir}/${package}-go/src/${package_src}
+            mkdir -p $(dirname ${vulnerability_package_path})
+            ln -sfF ${tmp_dir}/${package} ${vulnerability_package_path}
+            pushd ${vulnerability_package_path}/${workdir}
+                check_dep_vulnerabilities $package $local_lockfile $workdir &
+            popd
         fi
 
-        GO111MODULE=on go mod tidy
-        GO111MODULE=on go mod vendor
-    elif [[ -f package.json ]]; then
+        package_path=${GOPATH}/src/${package_src}
+        mkdir -p $(dirname ${package_path})
+        ln -sfF ${current_dir} ${package_path}
+        pushd ${package_path}/${workdir}
+            rm -rf ${GOPATH}/pkg/dep/sources vendor
+            for i in 1 2 3; do
+                GO111MODULE=off dep ensure && break
+                sleep 5
+            done
+        popd
+    elif [[ -f ${workdir:+$workdir/}go.mod ]]; then
+        if [[ $is_excluded -eq 0 ]] && [[ -f go.sum ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
+            cp -r ${current_dir} ${tmp_dir}/${package}
+            pushd ${tmp_dir}/${package}/${workdir}
+                check_mod_vulnerabilities $package $local_lockfile $workdir &
+            popd
+        fi
+
+        pushd ./${workdir}
+            for i in 1 2 3; do
+                GO111MODULE=on go mod vendor && break
+                sleep 5
+            done
+        popd
+    elif [[ -f ${workdir:+$workdir/}package.json ]]; then
         export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
 
         if [[ $is_excluded -eq 0 ]] && [[ -f package-lock.json ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
-            cp -f package-lock.json package-lock.json.pull_dep_in_place # backup lock file
-            cp -f package.json package.json.pull_dep_in_place # backup dep file
-            check_npm_vulnerabilities $package $local_lockfile
-            mv -f package-lock.json.pull_dep_in_place package-lock.json # restore lock file
-            mv -f package.json.pull_dep_in_place package.json # restore dep file
+            cp -r ${current_dir} ${tmp_dir}/${package}
+            pushd ${tmp_dir}/${package}/${workdir}
+                check_npm_vulnerabilities $package $local_lockfile $workdir &
+            popd
         fi
-        npm install --python=python2
+        
+        pushd ./${workdir}
+            for i in 1 2 3; do
+                npm install --python=python2 --no-audit --silent --ignore-scripts && break
+                sleep 5
+            done
+        popd
     fi
+
+    wait # wait for vulnerability processes
+    rm -rf ${tmp_dir}/${package} ${tmp_dir}/${package}-go ${tmp_dir}/go/${package} ${tmp_dir}/yarn/${package}*
 }
 
 check_dep_vulnerabilities() {
     set +o errexit
     local package=$1
     local local_lockfile=${2}
+    local workdir=$3
+    local GOPATH=${tmp_dir}/${package}-go
+    export GOPATH=${GOPATH}
+    mkdir -p ${GOPATH}
 
     if ! command -v nancy &> /dev/null; then
         echo "Ignore checking vulnerabilities of ${package}, 'nancy' is required"
@@ -213,17 +248,15 @@ check_dep_vulnerabilities() {
     fi
 
     mv -f Gopkg.lock Gopkg.lock.ori
-    rm -rf ${tmp_dir}/go/pkg/dep/sources vendor
+    rm -rf ${GOPATH}/pkg/dep/sources vendor
     GO111MODULE=off dep ensure
     GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > ${tmp_dir}/${package}-dep-vulnerability-new
     mv -f Gopkg.lock.ori Gopkg.lock
-    rm -rf vendor ${tmp_dir}/go/pkg/dep/sources
+    rm -rf vendor ${GOPATH}/pkg/dep/sources
     GO111MODULE=off dep ensure
     GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > ${tmp_dir}/${package}-dep-vulnerability-ori
 
     set +o xtrace
-    old_vulnerability_ids=()
-    result_vulnerability_ids=()
     gen_go_vulnerabilities ${package} ${tmp_dir}/${package}-dep-vulnerability-ori ${tmp_dir}/${package}-dep-vulnerability-new
     set -o xtrace
 
@@ -232,19 +265,17 @@ check_dep_vulnerabilities() {
     if [ -n "${local_lockfile}" ]; then
         mv ${local_lockfile} Gopkg.lock
     elif [[ -d .git ]] || [[ -f .git ]]; then
-        git checkout pmm-1.x Gopkg.lock
-        git checkout pmm-1.x Gopkg.toml
+        git show pmm-1.x:${workdir:+$workdir/}Gopkg.lock > ./Gopkg.lock
+        git show pmm-1.x:${workdir:+$workdir/}Gopkg.toml > ./Gopkg.toml
     else
         set -o errexit
         return
     fi
-    rm -rf vendor ${tmp_dir}/go/pkg/dep/sources
+    rm -rf vendor ${GOPATH}/pkg/dep/sources
     GO111MODULE=off dep ensure
     GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > ${tmp_dir}/${package}-dep-vulnerability-pmm
 
     set +o xtrace
-    old_vulnerability_ids=()
-    result_vulnerability_ids=()
     gen_go_vulnerabilities ${package} ${tmp_dir}/${package}-dep-vulnerability-ori ${tmp_dir}/${package}-dep-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     set -o xtrace
@@ -256,6 +287,7 @@ check_mod_vulnerabilities() {
     set +o errexit
     local package=$1
     local local_lockfile=$2
+    local workdir=$3
 
     if ! command -v nancy &> /dev/null; then
         echo "Ignore checking vulnerabilities of ${package}, 'nancy' is required"
@@ -270,18 +302,14 @@ check_mod_vulnerabilities() {
     fi
 
     mv -f go.sum go.sum.ori
-    GO111MODULE=on go mod tidy
     GO111MODULE=on go mod vendor
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-new
     mv -f go.sum.ori go.sum
     rm -rf vendor
-    GO111MODULE=on go mod tidy
     GO111MODULE=on go mod vendor
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-ori
 
     set +o xtrace
-    old_vulnerability_ids=()
-    result_vulnerability_ids=()
     gen_go_vulnerabilities ${package} ${tmp_dir}/${package}-mod-vulnerability-ori ${tmp_dir}/${package}-mod-vulnerability-new
     set -o xtrace
 
@@ -290,20 +318,17 @@ check_mod_vulnerabilities() {
     if [ -n "${local_lockfile}" ]; then
         mv ${local_lockfile} go.sum
     elif [[ -d .git ]] || [[ -f .git ]]; then
-        git checkout pmm-1.x go.sum
-        git checkout pmm-1.x go.mod
+        git show pmm-1.x:${workdir:+$workdir/}go.sum > ./go.sum
+        git show pmm-1.x:${workdir:+$workdir/}go.mod > ./go.mod
     else
         set -o errexit
         return
     fi
     rm -rf vendor
-    GO111MODULE=on go mod tidy
     GO111MODULE=on go mod vendor
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-pmm
 
     set +o xtrace
-    old_vulnerability_ids=()
-    result_vulnerability_ids=()
     gen_go_vulnerabilities ${package} ${tmp_dir}/${package}-mod-vulnerability-ori ${tmp_dir}/${package}-mod-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-go.json
     set -o xtrace
@@ -315,6 +340,9 @@ check_npm_vulnerabilities() {
     set +o errexit
     local package=$1
     local local_lockfile=$2
+    local workdir=$3
+    local yarn_cache_path=${tmp_dir}/yarn/${package}-vulnerability-cache
+    mkdir -p ${yarn_cache_path}
 
     if [ ! -f package-lock.json ]; then
         echo "Ignore checking vulnerabilities of ${package}, original package-lock.json file not exists"
@@ -324,14 +352,13 @@ check_npm_vulnerabilities() {
 
     yarn import
     yarn audit --json > ${tmp_dir}/${package}-npm-vulnerability-ori
-    rm -f package-lock.json
-    yarn
+    rm -rf package-lock.json yarn.lock node_modules
+    npm install --package-lock-only
+    yarn import
     yarn audit --json > ${tmp_dir}/${package}-npm-vulnerability-new
-    rm -f yarn.lock
+    rm -rf yarn.lock node_modules
 
     set +o xtrace
-    old_vulnerability_ids=()
-    result_vulnerability_ids=()
     gen_node_vulnerabilities ${package} ${tmp_dir}/${package}-npm-vulnerability-ori ${tmp_dir}/${package}-npm-vulnerability-new
     set -o xtrace
 
@@ -339,18 +366,17 @@ check_npm_vulnerabilities() {
     if [ -n "${local_lockfile}" ]; then
         mv ${local_lockfile} package-lock.json
     elif [[ -d .git ]] || [[ -f .git ]]; then
-        git checkout pmm-1.x package-lock.json
-        git checkout pmm-1.x package.json
+        git show pmm-1.x:${workdir:+$workdir/}package-lock.json > ./package-lock.json
+        git show pmm-1.x:${workdir:+$workdir/}package.json > ./package.json
     else
         set -o errexit
         return
     fi
+
     yarn import
     yarn audit --json > ${tmp_dir}/${package}-npm-vulnerability-pmm
 
     set +o xtrace
-    old_vulnerability_ids=()
-    result_vulnerability_ids=()
     gen_node_vulnerabilities ${package} ${tmp_dir}/${package}-npm-vulnerability-ori ${tmp_dir}/${package}-npm-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     set -o xtrace
@@ -362,6 +388,9 @@ check_yarn_vulnerabilities() {
     set +o errexit
     local package=$1
     local local_lockfile=$2
+    local workdir=$3
+    local yarn_cache_path=${tmp_dir}/yarn/${package}-vulnerability-cache
+    mkdir -p ${yarn_cache_path}
 
     if [ ! -f yarn.lock ]; then
         echo "Ignore checking vulnerabilities of ${package}, original yarn.lock file not exists"
@@ -370,13 +399,12 @@ check_yarn_vulnerabilities() {
     fi
 
     yarn audit --json > ${tmp_dir}/${package}-yarn-vulnerability-ori
-    rm -f yarn.lock
-    yarn
+    rm -rf yarn.lock node_modules
+    yarn --cache-folder ${yarn_cache_path}
     yarn audit --json > ${tmp_dir}/${package}-yarn-vulnerability-new
+    rm -rf yarn.lock node_modules
 
     set +o xtrace
-    old_vulnerability_ids=()
-    result_vulnerability_ids=()
     gen_node_vulnerabilities ${package} ${tmp_dir}/${package}-yarn-vulnerability-ori ${tmp_dir}/${package}-yarn-vulnerability-new
     set -o xtrace
 
@@ -384,17 +412,16 @@ check_yarn_vulnerabilities() {
     if [ -n "${local_lockfile}" ]; then
         mv -f ${local_lockfile} yarn.lock
     elif [[ -d .git ]] || [[ -f .git ]]; then
-        git checkout pmm-1.x yarn.lock
-        git checkout pmm-1.x package.json
+        git show pmm-1.x:${workdir:+$workdir/}yarn.lock > ./yarn.lock
+        git show pmm-1.x:${workdir:+$workdir/}package.json > ./package.json
     else
         set -o errexit
         return
     fi
+
     yarn audit --json > ${tmp_dir}/${package}-yarn-vulnerability-pmm
 
     set +o xtrace
-    old_vulnerability_ids=()
-    result_vulnerability_ids=()
     gen_node_vulnerabilities ${package} ${tmp_dir}/${package}-yarn-vulnerability-ori ${tmp_dir}/${package}-yarn-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-node.json
     set -o xtrace
@@ -407,8 +434,37 @@ gen_go_vulnerabilities() {
     local ori_file=$2
     local new_file=$3
     local dest_file=${4:-"${logs_dir}/vulnerability-diffs/${package}-go.json"}
+    local old_vulnerability_ids=()
+    local result_vulnerability_ids=()
 
     echo $'[\n]' > "${dest_file}"
+
+    i=0
+    vulnerable_length=$(cat "${ori_file}" | jq ".vulnerable | length")
+    while [ $i -lt ${vulnerable_length} ]; do
+        vulnerable=$(cat "${ori_file}" | jq ".vulnerable[${i}]")
+        if [ -z "$vulnerable" ] || [ "$vulnerable" = "null" ]; then
+            i=$((i+1))
+            continue
+        fi
+
+        j=0
+        vulnerability_length=$(echo "${vulnerable}" | jq ".Vulnerabilities | length")
+        while [ $j -lt $vulnerability_length ]; do
+            vulnerability=$(echo "${vulnerable}" | jq ".Vulnerabilities[${j}]")
+            if [ -z "$vulnerability" ] || [ "$vulnerability" = "null" ]; then
+                j=$((j+1))
+                continue
+            fi
+
+            match_id=$(echo "${vulnerability}" | jq ".ID")
+            old_vulnerability_ids+=($match_id)
+
+            j=$((j+1))
+        done
+
+        i=$((i+1))
+    done
 
     i=0
     vulnerable_length=$(cat "${new_file}" | jq ".vulnerable | length")
@@ -430,7 +486,15 @@ gen_go_vulnerabilities() {
             fi
 
             id=$(echo "${vulnerability}" | jq ".ID")
-            if go_vulnerability_exists "$ori_file" $id || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
+            local exists=false
+            for match_id in ${old_vulnerability_ids[@]}; do
+                if [ $id = $match_id ]; then
+                    exists=true
+                    break
+                fi
+            done
+
+            if $exists || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
                 j=$((j+1))
                 continue
             fi
@@ -456,57 +520,13 @@ gen_go_vulnerabilities() {
     done
 }
 
-go_vulnerability_exists() {
-    local file=$1
-    local id=$2
-    local exists=1
-
-    if [ ${#old_vulnerability_ids[@]} -gt 0 ]; then
-        for match_id in ${old_vulnerability_ids[@]}; do
-            if [ $id = $match_id ]; then
-                return 0
-            fi
-        done
-    else
-        i=0
-        vulnerable_length=$(cat "${file}" | jq ".vulnerable | length")
-        while [ $i -lt ${vulnerable_length} ]; do
-            vulnerable=$(cat "${file}" | jq ".vulnerable[${i}]")
-            if [ -z "$vulnerable" ] || [ "$vulnerable" = "null" ]; then
-                i=$((i+1))
-                continue
-            fi
-
-            j=0
-            vulnerability_length=$(echo "${vulnerable}" | jq ".Vulnerabilities | length")
-            while [ $j -lt $vulnerability_length ]; do
-                vulnerability=$(echo "${vulnerable}" | jq ".Vulnerabilities[${j}]")
-                if [ -z "$vulnerability" ] || [ "$vulnerability" = "null" ]; then
-                    j=$((j+1))
-                    continue
-                fi
-
-                match_id=$(echo "${vulnerability}" | jq ".ID")
-                old_vulnerability_ids+=($match_id)
-                if [ $id = $match_id ]; then
-                    exists=0
-                fi
-
-                j=$((j+1))
-            done
-
-            i=$((i+1))
-        done
-    fi
-
-    return $exists
-}
-
 gen_node_vulnerabilities() {
     local package=$1
     local ori_file=$2
     local new_file=$3
     local dest_file=${4:-"${logs_dir}/vulnerability-diffs/${package}-node.json"}
+    local old_vulnerability_ids=()
+    local result_vulnerability_ids=()
 
     echo $'[\n]' > "${dest_file}"
 
@@ -516,8 +536,26 @@ gen_node_vulnerabilities() {
             continue
         fi
 
+        match_id=$(echo "${line}" | jq ".data.advisory.id")
+        old_vulnerability_ids+=($match_id)
+    done < "$ori_file"
+
+    while read -r line; do
+        type=$(echo "${line}" | jq -r ".type")
+        if [ -z "$type" ] || [ "$type" = "null" ] || [ "$type" != "auditAdvisory" ]; then
+            continue
+        fi
+
         id=$(echo "${line}" | jq ".data.advisory.id")
-        if node_vulnerability_exists $ori_file $id || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
+        local exists=false
+        for match_id in ${old_vulnerability_ids[@]}; do
+            if [ $id = $match_id ]; then
+                exists=true
+                break
+            fi
+        done
+
+        if $exists || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
             continue
         fi
 
@@ -536,35 +574,6 @@ gen_node_vulnerabilities() {
 
         insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${dest_file}"
     done < "$new_file"
-}
-
-node_vulnerability_exists() {
-    local file=$1
-    local id=$2
-    local exists=1
-
-    if [ ${#old_vulnerability_ids[@]} -gt 0 ]; then
-        for match_id in ${old_vulnerability_ids[@]}; do
-            if [ $id = $match_id ]; then
-                return 0
-            fi
-        done
-    else
-        while read -r line; do
-            type=$(echo "${line}" | jq -r ".type")
-            if [ -z "$type" ] || [ "$type" = "null" ] || [ "$type" != "auditAdvisory" ]; then
-                continue
-            fi
-
-            match_id=$(echo "${line}" | jq ".data.advisory.id")
-            old_vulnerability_ids+=($match_id)
-            if [ $match_id = $id ]; then
-                exists=0
-            fi
-        done < "$file"
-    fi
-
-    return $exists
 }
 
 insert_into_vulnerability() {
@@ -615,7 +624,7 @@ create_srpm() {
     local version=
 
     rm -rf ${tmp_dir}/rpmbuild/SRPMS/${package}*
-    rm -rf ${tmp_dir}/rpmbuild/SOURCES/*
+    rm -rf ${tmp_dir}/rpmbuild/SOURCES/${package}*
     mkdir -vp ${tmp_dir}/rpmbuild/{SOURCES,SPECS,BUILD,SRPMS,RPMS}
 
     pushd ${submodule_dir}/$package
@@ -648,7 +657,7 @@ create_srpm() {
         fi
     else
         if [ "$package" == "grafana" ]; then
-            build_3rd_tallbar $package "grafana-yarn.lock" "yarn.lock" "1"
+            build_3rd_tallbar $package "grafana-yarn.lock" "yarn.lock"
             build_3rd_tallbar "node-sass" "node-sass-package-lock.json" "package-lock.json"
         else
             build_3rd_tallbar $package
