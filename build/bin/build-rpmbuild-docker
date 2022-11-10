@@ -8,3 +8,16 @@ set -o xtrace
 mkdir -p ${buildimg_build_dir}
 cp -r ${root_dir}/build/rpmbuild-docker/* ${buildimg_build_dir}/
 docker build --squash -t ${rpmbuild_docker_image}:latest ${buildimg_build_dir}/
+# use clamd@scan service to scan the docker image
+image_tar=${tmp_dir}/rpmbuild-image.tar
+image_dir=${tmp_dir}/rpmbuild-image
+cid=$(docker create ${rpmbuild_docker_image}:latest)
+docker export $cid -o ${image_tar}
+docker rm ${cid}
+mkdir -vp ${image_dir}
+rm -rf ${image_dir}/* && tar -C ${image_dir} -xf ${image_tar}
+find ${image_dir} -type d -exec chmod 0777 {} \;
+find ${image_dir} -type f ! -executable -exec chmod 0666 {} \;
+find ${image_dir} -type f -executable -exec chmod 0777 {} \;
+find ${image_dir} -type f -print0 | xargs -0 -n1 -P$(nproc) clamdscan --multiscan --fdpass --quiet
+rm -rf ${image_dir}
