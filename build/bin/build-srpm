@@ -476,6 +476,11 @@ gen_go_vulnerabilities() {
         fi
 
         path=$(echo "${vulnerable}" | jq ".Coordinates")
+        if [ -z "$path" ]; then
+            i=$((i+1))
+            continue
+        fi
+
         j=0
         vulnerability_length=$(echo "${vulnerable}" | jq ".Vulnerabilities | length")
         while [ $j -lt $vulnerability_length ]; do
@@ -486,24 +491,25 @@ gen_go_vulnerabilities() {
             fi
 
             id=$(echo "${vulnerability}" | jq ".ID")
-            local exists=false
-            for match_id in ${old_vulnerability_ids[@]}; do
-                if [ $id = $match_id ]; then
-                    exists=true
-                    break
-                fi
-            done
+            if [ -z "$id" ]; then
+                j=$((j+1))
+                continue
+            fi
 
-            if $exists || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
+            if [[ " ${old_vulnerability_ids[*]} " == *" ${id} "* ]] || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
+                j=$((j+1))
+                continue
+            fi
+
+            title=$(echo "${vulnerability}" | jq ".Title")
+            desc=$(echo "${vulnerability}" | jq ".Description")
+            ref=$(echo "${vulnerability}" | jq ".Reference")
+            if [ -z "$title" ] || [ -z "$desc" ] || [ -z "$ref" ]; then
                 j=$((j+1))
                 continue
             fi
 
             result_vulnerability_ids+=(${id})
-
-            title=$(echo "${vulnerability}" | jq ".Title")
-            desc=$(echo "${vulnerability}" | jq ".Description")
-            ref=$(echo "${vulnerability}" | jq ".Reference")
 
             # check if cvss_score is a vaild positive number
             cvss_score=$(echo "${vulnerability}" | jq -r ".CvssScore") # it's string value, use -r to get raw decimal value between quotes
@@ -547,24 +553,23 @@ gen_node_vulnerabilities() {
         fi
 
         id=$(echo "${line}" | jq ".data.advisory.id")
-        local exists=false
-        for match_id in ${old_vulnerability_ids[@]}; do
-            if [ $id = $match_id ]; then
-                exists=true
-                break
-            fi
-        done
-
-        if $exists || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
+        if [ -z "$id" ]; then
             continue
         fi
 
-        result_vulnerability_ids+=(${id})
+        if [[ " ${old_vulnerability_ids[*]} " == *" ${id} "* ]] || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
+            continue
+        fi
 
         path=$(echo "${line}" | jq ".data.resolution.path")
         title=$(echo "${line}" | jq ".data.advisory.title")
         desc=$(echo "${line}" | jq ".data.advisory.overview")
         ref=$(echo "${line}" | jq ".data.advisory.url")
+        if [ -z "$path" ] || [ -z "$title" ] || [ -z "$desc" ] || [ -z "$ref" ]; then
+            continue
+        fi
+
+        result_vulnerability_ids+=(${id})
 
         cvss_score=$(echo "${line}" | jq ".data.advisory.cvss.score")
         re='^[0-9]+([.][0-9]+)?$'
