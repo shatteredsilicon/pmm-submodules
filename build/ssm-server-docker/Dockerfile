@@ -1,4 +1,4 @@
-FROM rockylinux:8-minimal
+FROM almalinux:8.7-minimal
 
 EXPOSE 80 443
 
@@ -17,10 +17,11 @@ COPY playbook-install.yml /opt/playbook-install.yml
 COPY playbook-init.yml /opt/playbook-init.yml
 
 RUN microdnf -y install --nodocs --noplugins --best yum && \
-    yum -y install ansible sqlite && \
+    yum -y install ansible-core sqlite && \
+    ansible-galaxy collection install community.general community.mysql && \
     ansible-playbook -vvv -i 'localhost,' -c local /opt/playbook-install.yml && \
     ansible-playbook -vvv -i 'localhost,' -c local /opt/playbook-init.yml && \
-    yum autoremove && yum -y clean all
+    yum -y autoremove && yum -y clean all
 
 RUN cp /usr/share/ssm-server/entrypoint.sh /opt/entrypoint.sh
 

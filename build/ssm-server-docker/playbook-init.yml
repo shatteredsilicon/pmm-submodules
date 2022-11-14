@@ -34,8 +34,8 @@
       command: find /var/lib/mysql -type f -exec touch {} \;
 
     - name: Grafana                    | Enable gzip
-      ini_file:
-        dest: /etc/grafana/grafana.ini
+      community.general.ini_file:
+        path: /etc/grafana/grafana.ini
         section: server
         option: enable_gzip
         value: true
@@ -54,12 +54,12 @@
         timeout: 60
 
     - name: ssm-managed                | Create MySQL database
-      mysql_db:
+      community.mysql.mysql_db:
         name: ssm-managed
         state: present
 
     - name: ssm-managed                | Create MySQL user
-      mysql_user:
+      community.mysql.mysql_user:
         name: ssm-managed
         host: localhost
         password: '*816FFB19BC44AC2749D546E48FA0DF957EDB2C5A'
@@ -68,12 +68,12 @@
         state: present
 
     - name: Orchestrator               | Create MySQL database
-      mysql_db:
+      community.mysql.mysql_db:
         name: orchestrator
         state: present
 
     - name: Orchestrator               | Create MySQL user
-      mysql_user:
+      community.mysql.mysql_user:
         name: orchestrator
         host: localhost
         password: '*0AD183209365CECFB9275669074B645DFEF2D180'
@@ -82,20 +82,20 @@
         state: present
 
     - name: qan-api                    | Create MySQL database
-      mysql_db:
+      community.mysql.mysql_db:
         name: ssm
         state: present
       register: ssm_db
 
     - name: qan-api                    | Import MySQL database
       when: ssm_db.changed
-      mysql_db:
+      community.mysql.mysql_db:
         name: ssm
         state: import
         target: /usr/share/ssm-qan-api/schema/ssm.sql
 
     - name: qan-api                    | Create MySQL user
-      mysql_user:
+      community.mysql.mysql_user:
         name: qan-api
         host: localhost
         password: '*0AA26B75B9CEB6A29B3202E2766D030228F5FC29'
@@ -104,7 +104,7 @@
         state: present
 
     - name: qan-api                    | Create MySQL user for Grafana
-      mysql_user:
+      community.mysql.mysql_user:
         name: grafana
         host: localhost
         password: '*58324E2D77A9BBFD9DD1E904649697615FE74649'
