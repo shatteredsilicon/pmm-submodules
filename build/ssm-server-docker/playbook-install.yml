@@ -108,7 +108,7 @@
         - orchestrator
         - ssm-qan-api
         - ssm-qan-app
-        - percona-toolkit
+        - percona-toolkit-ssm-minimal
         - ssm-dashboards
         - ssm-server
         - ssm-client
