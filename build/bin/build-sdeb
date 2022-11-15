@@ -1,0 +1,122 @@
+#!/bin/bash
+
+set -o errexit
+set -o xtrace
+
+. $(dirname $0)/vars
+
+usage () {
+    cat <<EOF
+Usage: $0 [OPTIONS] PACKAGE
+
+    The following options may be given :
+        --help) usage ;;
+
+    The following packages may be given:
+        ${PACKAGES[@]}
+
+Example $0 ssm-client
+EOF
+        exit 1
+}
+
+build_sdeb() {
+    local package=$1
+    local version=$2
+    local build_dir=
+
+    if [ "$package" != "ssm-client" ]; then
+        echo 'deb packaging is only allowed for ssm-client'
+        exit 1
+    fi
+
+    if [[ -z "${version}" ]]; then
+        pushd ${submodule_dir}/${package}
+            if [[ -d .git ]] || [[ -f .git ]]; then
+                version=$(git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1)
+            else
+                echo "can't read version from git tag"
+                exit 1
+            fi
+        popd
+    fi
+
+    build_dir=${tmp_dir}/debbuild/SDEB/${package}-${version##v}
+    build_ssm_client_tarball ${package} ${build_dir}
+    cp -r ${submodule_dir}/${package}/debian ${build_dir}
+    pushd ${build_dir}
+        sed -i "s/%{_version}/${version}/g" debian/control
+        sed -i "s/%{_version}/${version}/g" debian/rules
+        dpkg-buildpackage -S -us
+    popd
+
+    mkdir -vp ${sdeb_dir}
+    rm -rf ${sdeb_dir}/${package}*
+    mv ${tmp_dir}/debbuild/SDEB/${package}_${version##v}*.dsc ${sdeb_dir}
+    mv ${tmp_dir}/debbuild/SDEB/${package}_${version##v}*.tar.gz ${sdeb_dir}
+}
+
+git_url_to_import_path() {
+    proto="$(echo $1 | grep :// | sed -e's,^\(.*://\).*,\1,g')"
+    url="$(echo ${1/$proto/})"
+    user="$(echo $url | grep @ | cut -d@ -f1)"
+    host="$(echo ${url/$user@/} | cut -d/ -f1 | sed 's/:/\//g')"
+    path="$(echo $url | grep / | cut -d/ -f2-)"
+
+    echo "${host}/${path%'.git'}"
+}
+
+build_ssm_client_tarball() {
+    local name=$1
+    local dest_dir=$2
+    local sub_packages=(mongodb_exporter mysqld_exporter postgres_exporter proxysql_exporter pid-watchdog qan-agent node_exporter ssm-client)
+
+    mkdir -p ${dest_dir}
+    local pids=()
+    for sub_package in ${sub_packages[@]}; do
+        pushd ${submodule_dir}/${sub_package}
+            local tag=$(git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1)
+            if [ -f "${dest_dir}/${sub_package}-${tag##v}.tar.gz" ]; then
+                echo "${sub_package}-${tag##v}.tar.gz exists, skipped"
+            else
+                local GOPATH=${tmp_dir}/deb-go/${sub_package}
+                export GOPATH=${GOPATH}
+                mkdir -vp ${GOPATH}
+
+                package_path=${GOPATH}/src/$(git_url_to_import_path $(git remote get-url origin))
+                mkdir -p $(dirname ${package_path})
+                cp -r ${submodule_dir}/${sub_package} ${package_path}
+
+                pushd ${package_path}
+                    rm -rf vendor
+                    { GO111MODULE=off dep ensure; tar -C $(dirname ${package_path}) -czf ${dest_dir}/${sub_package}-${tag##v}.tar.gz $(basename ${package_path}); } & pids+=($!)
+                popd
+            fi
+        popd
+    done
+    for pid in ${pids[@]}; do
+        wait ${pid}
+    done
+    rm -rf ${tmp_dir}/deb-go
+}
+
+main() {
+    local package=
+
+    for arg do
+        val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
+        case "$arg" in
+            --help)         usage ;;
+            -*)             usage ;;
+            *)              package="$val" ;;
+        esac
+    done
+
+    if [ -z "$package" ]; then
+        usage
+    fi
+
+    build_sdeb $package
+}
+
+main $@

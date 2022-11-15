@@ -1,0 +1,89 @@
+#!/bin/bash
+
+set -o errexit
+set -o xtrace
+
+. $(dirname $0)/vars
+
+PACKAGES=("${deb_packages[@]}")
+
+usage () {
+    cat <<EOF
+Usage: $0 [OPTIONS] [PACKAGES]
+
+    The following options may be given:
+        --help) usage ;;
+
+    The following packages may be given:
+        ${packages[@]}
+
+Example $0 ssm-client
+EOF
+        exit 1
+}
+
+shell_quote_string() {
+  echo "$1" | sed -e 's,\([^a-zA-Z0-9/_.=-]\),\\\1,g'
+}
+
+build_debs() {
+    local build_commands=
+
+    for package in ${PACKAGES[@]}; do
+        build_commands="
+            ${build_commands}
+            /home/builder/ssm-submodules/build/bin/build-deb ${package}
+        "
+    done
+
+    docker run --rm -v ${root_dir}:/home/builder/ssm-submodules debian:stretch-slim sh -c "
+        set -o errexit
+        set -o xtrace
+
+        echo 'deb http://deb.debian.org/debian bullseye-backports main' > /etc/apt/sources.list.d/bullseye-backports.list
+        apt update && apt install -y golang-1.17 && \
+            rm /etc/apt/sources.list.d/bullseye-backports.list && \
+            apt update && apt install -y git rsync build-essential devscripts
+        useradd builder -u 1000 -m -G users,wheel && \
+            chmod 755 /home/builder && su - builder
+        export GOROOT=/usr/lib/go-1.17 && export GOPATH=/home/builder/go &&
+            PATH=/usr/lib/go-1.17/bin:\${GOPATH}/bin:\$PATH
+        mkdir -p \${GOPATH}/src/github.com/golang && \
+            ln -s /home/builder/ssm-submodules/build/rpmbuild-docker/dep \${GOPATH}/src/github.com/golang/
+        GO111MODULE=off go install -ldflags=\"-X main.version=v0.5.4\" \${GOPATH}/src/github.com/golang/dep/cmd/dep
+ 
+        ${build_commands}
+
+        # give host user permission
+        find /home/builder/ssm-submodules/tmp -type d -exec chmod 0777 {} \;
+        find /home/builder/ssm-submodules/tmp -type f -exec chmod 0666 {} \;
+        find /home/builder/ssm-submodules/results/DEBS -type d -exec chmod 0777 {} \;
+        find /home/builder/ssm-submodules/results/DEBS -type f -exec chmod 0666 {} \;
+    "
+}
+
+main() {
+    declare -a TMP_PACKAGES
+
+    for arg do
+        val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
+        case "$arg" in
+            --help)         usage ;;
+            -*)             usage ;;
+            *)              TMP_PACKAGES+=(`shell_quote_string "$arg"`) ;;
+        esac
+    done
+
+    if [ ${#TMP_PACKAGES[@]} -gt 0 ]; then
+        PACKAGES=("${TMP_PACKAGES[@]}")
+    fi
+
+    # give docker container user permission
+    mkdir -vp ${root_dir}/{results,tmp}
+    find ${root_dir}/{results,tmp} -type d -exec chmod 0777 {} \;
+    find ${root_dir}/{results,tmp} -type f -exec chmod 0666 {} \;
+
+    build_debs
+}
+
+main $@

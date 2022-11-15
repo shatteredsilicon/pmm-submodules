@@ -5,7 +5,7 @@ set -o xtrace
 
 . $(dirname $0)/vars
 
-PACKAGES=${packages[@]}
+PACKAGES=("${packages[@]}")
 
 usage () {
     cat <<EOF
@@ -27,28 +27,23 @@ shell_quote_string() {
 }
 
 build_srpms() {
-    local build_commands=
-
-    for package in ${PACKAGES[@]}; do
-        build_commands="
-            ${build_commands}
-            /home/builder/ssm-submodules/build/bin/build-srpm ${package}
-        "
-    done
-
-    docker run --rm -e ENV_DEV -v ${root_dir}:/home/builder/ssm-submodules-copy ${rpmbuild_docker_image} sh -c "
+    docker run --rm -e ENV_DEV -v ${root_dir}:/home/builder/ssm-submodules ${rpmbuild_docker_image} sh -c "
         set -o errexit
         set -o xtrace
- 
-        cp -r /home/builder/ssm-submodules-copy /home/builder/ssm-submodules
-        ${build_commands}
+
+        pids=()
+        for package in $(echo ${PACKAGES[@]}); do
+            /home/builder/ssm-submodules/build/bin/build-srpm \${package} & pids+=(\$!)
+        done
+        for pid in \"\${pids[@]}\"; do
+            wait \"\${pid}\"
+        done
 
         # give host user permission
-        rsync -aO --no-owner --no-group --no-perms /home/builder/ssm-submodules/results/ /home/builder/ssm-submodules-copy/results/
-        rsync -aO --no-owner --no-group --no-perms /home/builder/ssm-submodules/logs/ /home/builder/ssm-submodules-copy/logs/
-        rsync -aO --no-owner --no-group --no-perms /home/builder/ssm-submodules/docs/ /home/builder/ssm-submodules-copy/docs/
-        find /home/builder/ssm-submodules-copy/{results,logs,docs} -type d -exec chmod 0777 {} \;
-        find /home/builder/ssm-submodules-copy/{results,logs,docs} -type f ! -executable -exec chmod 0666 {} \;
+        find /home/builder/ssm-submodules/{logs,docs,tmp} -type d -exec chmod 0777 {} \;
+        find /home/builder/ssm-submodules/{logs,docs,tmp} -type f -exec chmod 0666 {} \;
+        find /home/builder/ssm-submodules/results/SRPMS -type d -exec chmod 0777 {} \;
+        find /home/builder/ssm-submodules/results/SRPMS -type f -exec chmod 0666 {} \;
     "
 }
 
@@ -65,18 +60,25 @@ main() {
     done
 
     if [ ${#TMP_PACKAGES[@]} -gt 0 ]; then
-        PACKAGES=${TMP_PACKAGES[@]}
+        PACKAGES=("${TMP_PACKAGES[@]}")
     fi
-    
+
     if [[ -n "${WITHOUT_DOCKER}" ]] && [[ ${WITHOUT_DOCKER} -eq 1 ]]; then
+        local pids=()
         for package in ${PACKAGES[@]}; do
-            "${bin_dir}/build-srpm" $package
+            ${bin_dir}/build-srpm ${package} & pids+=($!)
+        done
+        for pid in "${pids[@]}"; do
+            wait "${pid}"
         done
     else
         # give docker container user permission
-        mkdir -vp ${root_dir}/{results,docs,logs}
-        find ${root_dir}/{results,logs,docs} -type d -exec chmod 0777 {} \;
-        find ${root_dir}/{results,logs,docs} -type f ! -executable -exec chmod 0666 {} \;
+        mkdir -vp ${root_dir}/{results,docs,logs,tmp}
+        mkdir -vp ${root_dir}/results/SRPMS
+        find ${root_dir}/{logs,docs,tmp} -type d -exec chmod 0777 {} \;
+        find ${root_dir}/{logs,docs,tmp} -type f -exec chmod 0666 {} \;
+        find ${root_dir}/results/SRPMS -type d -exec chmod 0777 {} \;
+        find ${root_dir}/results/SRPMS -type f -exec chmod 0666 {} \;
 
         build_srpms
     fi
