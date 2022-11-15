@@ -180,54 +180,54 @@
 
     - name: Grafana                    | Enable Anonymous access
       when: not grafana_db.stat.exists
-      ini_file:
-        dest: /etc/grafana/grafana.ini
+      community.general.ini_file:
+        path: /etc/grafana/grafana.ini
         section: auth.anonymous
         option: enabled
         value: true
 
     - name: Grafana                    | Enable Anonymous access
       when: not grafana_db.stat.exists
-      ini_file:
-        dest: /etc/grafana/grafana.ini
+      community.general.ini_file:
+        path: /etc/grafana/grafana.ini
         section: auth.anonymous
         option: org_role
         value: Editor
 
     - name: Grafana                    | Set snapshot server
       when: not grafana_db.stat.exists
-      ini_file:
-        dest: /etc/grafana/grafana.ini
+      community.general.ini_file:
+        path: /etc/grafana/grafana.ini
         section: snapshots
         option: external_enabled
         value: false
 
     - name: Grafana                    | Set snapshot server
       when: not grafana_db.stat.exists
-      ini_file:
-        dest: /etc/grafana/grafana.ini
+      community.general.ini_file:
+        path: /etc/grafana/grafana.ini
         section: snapshots
         option: external_snapshot_url
         value: http://127.0.0.1
 
     - name: Grafana                    | Set snapshot server
       when: not grafana_db.stat.exists
-      ini_file:
-        dest: /etc/grafana/grafana.ini
+      community.general.ini_file:
+        path: /etc/grafana/grafana.ini
         section: snapshots
         option: external_snapshot_name
         value: Share with Shattered Silicon
 
     - name: supervisor                 | Fix credentials
-      ini_file:
-        dest: /etc/supervisord.conf
+      community.general.ini_file:
+        path: /etc/supervisord.conf
         section: supervisorctl
         option: username
         value: dummy
 
     - name: supervisor                 | Fix credentials
-      ini_file:
-        dest: /etc/supervisord.conf
+      community.general.ini_file:
+        path: /etc/supervisord.conf
         section: supervisorctl
         option: password
         value: dummy
