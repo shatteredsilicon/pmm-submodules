@@ -8,10 +8,10 @@ submodules:
 srpms: submodules
 	./build/bin/build-srpms $(packages)
 
-rpms: submodules srpms
+rpms: submodules
 	./build/bin/build-rpms $(packages)
 
-server: submodules rpms
+server: submodules
 	./build/bin/build-server
 
 rpmbuild-docker: submodules
