@@ -44,9 +44,24 @@ build() {
 
     if [ -z "${DOCKER_TAG}" ]; then
         docker build --squash --no-cache -t shatteredsilicon/ssm-server:${ssm_version} -t shatteredsilicon/ssm-server:latest ${server_build_dir}/
+        DOCKER_TAG=shatteredsilicon/ssm-server:${ssm_version}
     else
         docker build --squash --no-cache -t ${DOCKER_TAG} ${server_build_dir}/
     fi
+
+    # use clamd@scan service to scan the docker image
+    local image_tar=${tmp_dir}/ssm-server-image.tar
+    local image_dir=${tmp_dir}/ssm-server-image
+    local cid=$(docker create ${DOCKER_TAG})
+    docker export $cid -o ${image_tar}
+    docker rm ${cid}
+    mkdir -vp ${image_dir}
+    rm -rf ${image_dir}/* && tar -C ${image_dir} -xf ${image_tar}
+    find ${image_dir} -type d -exec chmod 0777 {} \;
+    find ${image_dir} -type f ! -executable -exec chmod 0666 {} \;
+    find ${image_dir} -type f -executable -exec chmod 0777 {} \;
+    find ${image_dir} -type f -print0 | xargs -0 -n1 -P$(nproc) clamdscan --multiscan --fdpass --quiet
+    rm -rf ${image_dir}
 }
 
 main() {
