@@ -200,7 +200,7 @@ pull_dep_in_place() {
 
         pushd ./${workdir}
             for i in 1 2 3; do
-                GO111MODULE=on go mod vendor && break
+                GO111MODULE=on go mod tidy && GO111MODULE=on go mod vendor && break
                 sleep 5
             done
         popd
@@ -302,10 +302,12 @@ check_mod_vulnerabilities() {
     fi
 
     mv -f go.sum go.sum.ori
+    GO111MODULE=on go mod tidy
     GO111MODULE=on go mod vendor
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-new
     mv -f go.sum.ori go.sum
     rm -rf vendor
+    GO111MODULE=on go mod tidy
     GO111MODULE=on go mod vendor
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-ori
 
@@ -325,6 +327,7 @@ check_mod_vulnerabilities() {
         return
     fi
     rm -rf vendor
+    GO111MODULE=on go mod tidy
     GO111MODULE=on go mod vendor
     GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-pmm
 
@@ -626,10 +629,14 @@ gen_fixed_vulnerabilities_md() {
 
 create_srpm() {
     local package=$1
+    local upstream_package=$2
     local version=
 
     rm -rf ${tmp_dir}/rpmbuild/SRPMS/${package}*
     rm -rf ${tmp_dir}/rpmbuild/SOURCES/${package}*
+    if [ -n "${upstream_package}" ]; then
+        rm -rf ${tmp_dir}/rpmbuild/SOURCES/${upstream_package}*
+    fi
     mkdir -vp ${tmp_dir}/rpmbuild/{SOURCES,SPECS,BUILD,SRPMS,RPMS}
 
     pushd ${submodule_dir}/$package
@@ -664,6 +671,8 @@ create_srpm() {
         if [ "$package" == "grafana" ]; then
             build_3rd_tallbar $package "grafana-yarn.lock" "yarn.lock"
             build_3rd_tallbar "node-sass" "node-sass-package-lock.json" "package-lock.json"
+        elif [ -n "${upstream_package}" ]; then
+            build_3rd_tallbar "${upstream_package}"
         else
             build_3rd_tallbar $package
         fi
@@ -737,7 +746,11 @@ main() {
         usage
     fi
 
-    create_srpm $package
+    if [ "${package}" == "percona-toolkit-ssm-minimal" ]; then
+        create_srpm "$package" "percona-toolkit"
+    else
+        create_srpm "$package"
+    fi
 }
 
 main $@
