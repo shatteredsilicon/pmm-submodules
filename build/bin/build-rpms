@@ -40,6 +40,8 @@ build_rpms() {
         done
 
         # give host user permission
+        find /home/builder/ssm-submodules/tmp -type d -exec chmod 0777 {} \;
+        find /home/builder/ssm-submodules/tmp -type f -exec chmod 0666 {} \;
         find /home/builder/ssm-submodules/results/RPMS -type d -exec chmod 0777 {} \;
         find /home/builder/ssm-submodules/results/RPMS -type f -exec chmod 0666 {} \;
     "
@@ -72,6 +74,8 @@ main() {
     else
         # give docker container user permission
         mkdir -vp ${root_dir}/results/RPMS
+        find ${root_dir}/tmp -type d -exec chmod 0777 {} \;
+        find ${root_dir}/tmp -type f -exec chmod 0666 {} \;
         find ${root_dir}/results/RPMS -type d -exec chmod 0777 {} \;
         find ${root_dir}/results/RPMS -type f -exec chmod 0666 {} \;
 
