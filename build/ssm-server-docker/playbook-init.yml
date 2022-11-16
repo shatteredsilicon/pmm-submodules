@@ -128,19 +128,6 @@
         delay: 10
         timeout: 180
 
-    - name: SSM                        | Create ssm-update dirs
-      file: path={{ item }} state=directory
-      with_items:
-        - /srv/update
-
-    - name: SSM                        | Check ssm-update
-      stat: path=/srv/update/main.yml
-      register: ssm_update_file
-
-    - name: SSM                        | Run ssm-update
-      when: not ssm_update_file.stat.exists
-      command: env EXTRA_ARGS='--extra-vars image_creation=1' /usr/bin/ssm-update-stage2
-
     - name: SSM                        | Stop services
       shell: supervisorctl shutdown
 

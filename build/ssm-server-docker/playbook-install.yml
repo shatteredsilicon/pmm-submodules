@@ -114,7 +114,6 @@
         - ssm-client
         - ssm-manage
         - ssm-managed
-        - ssm-update
         - rds_exporter
         - mariadb
         - mariadb-server
