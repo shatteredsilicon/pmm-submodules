@@ -44,7 +44,7 @@
       shell: rm -f /etc/my.cnf.d/auth_gssapi.cnf && /usr/bin/mysql_install_db --user=mysql
 
     - name: SSM                        | Start services
-      shell: supervisord -c /etc/supervisord.conf &
+      shell: ON_SSM_SERVER_SETUP=1 supervisord -c /etc/supervisord.conf &
 
     - name: SSM                        | Wait for mysqld start
       wait_for:
