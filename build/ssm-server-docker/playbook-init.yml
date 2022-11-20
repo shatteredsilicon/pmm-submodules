@@ -54,11 +54,15 @@
         timeout: 60
 
     - name: ssm-managed                | Create MySQL database
+      vars:
+        ansible_python_interpreter: /usr/bin/python2
       community.mysql.mysql_db:
         name: ssm-managed
         state: present
 
     - name: ssm-managed                | Create MySQL user
+      vars:
+        ansible_python_interpreter: /usr/bin/python2
       community.mysql.mysql_user:
         name: ssm-managed
         host: localhost
@@ -68,11 +72,15 @@
         state: present
 
     - name: Orchestrator               | Create MySQL database
+      vars:
+        ansible_python_interpreter: /usr/bin/python2
       community.mysql.mysql_db:
         name: orchestrator
         state: present
 
     - name: Orchestrator               | Create MySQL user
+      vars:
+        ansible_python_interpreter: /usr/bin/python2
       community.mysql.mysql_user:
         name: orchestrator
         host: localhost
@@ -82,6 +90,8 @@
         state: present
 
     - name: qan-api                    | Create MySQL database
+      vars:
+        ansible_python_interpreter: /usr/bin/python2
       community.mysql.mysql_db:
         name: ssm
         state: present
@@ -89,12 +99,16 @@
 
     - name: qan-api                    | Import MySQL database
       when: ssm_db.changed
+      vars:
+        ansible_python_interpreter: /usr/bin/python2
       community.mysql.mysql_db:
         name: ssm
         state: import
         target: /usr/share/ssm-qan-api/schema/ssm.sql
 
     - name: qan-api                    | Create MySQL user
+      vars:
+        ansible_python_interpreter: /usr/bin/python2
       community.mysql.mysql_user:
         name: qan-api
         host: localhost
@@ -104,6 +118,8 @@
         state: present
 
     - name: qan-api                    | Create MySQL user for Grafana
+      vars:
+        ansible_python_interpreter: /usr/bin/python2
       community.mysql.mysql_user:
         name: grafana
         host: localhost
@@ -116,6 +132,11 @@
       wait_for:
         path: /var/lib/grafana/PERCONA_DASHBOARDS_VERSION
         state: present
+
+    - name: SSM                        | Create ssm-update dirs
+      file: path={{ item }} state=directory
+      with_items:
+        - /srv/update
 
     - name: SSM                        | Stop services
       shell: supervisorctl restart orchestrator
@@ -131,21 +152,17 @@
     - name: SSM                        | Stop services
       shell: supervisorctl shutdown
 
-    - name: SSM                        | Remove OS tools
-      when: ansible_os_family == 'RedHat'
-      yum: name={{ item }} state=removed
-      with_items:
-        - yum-utils
-        - python2-pip
-
-    - name: MariaDB                    | Remove Python Modules
+    - name: SSM                    | Remove Python Modules
       pip:
         name:
-          - PyMySQL
+          - requests
         state: absent
 
+    - name: SSM                        | Remove OS tools
+      shell: microdnf -y remove python2-PyMySQL python2-pip
+
     - name: SSM                        | Cleanup yum cache
-      shell: yum clean all
+      shell: microdnf clean all
 
     - name: SSM                        | Cleanup logs
       file: path={{ item }} state=absent
