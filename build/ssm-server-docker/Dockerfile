@@ -12,16 +12,18 @@ RUN microdnf -y update && \
 RUN useradd -s /bin/false ssm
 RUN (rkhunter --update || true) && rkhunter --propupd
 
+ARG ssm_version=ssm_version
+ENV SSM_VERSION=$ssm_version
+
 COPY RPMS /tmp/RPMS
 COPY playbook-install.yml /opt/playbook-install.yml
 COPY playbook-init.yml /opt/playbook-init.yml
 
-RUN microdnf -y install --nodocs --noplugins --best yum && \
-    yum -y install ansible-core sqlite && \
+RUN microdnf -y install --nodocs --noplugins --best ansible-core sqlite && \
     ansible-galaxy collection install community.general community.mysql && \
     ansible-playbook -vvv -i 'localhost,' -c local /opt/playbook-install.yml && \
     ansible-playbook -vvv -i 'localhost,' -c local /opt/playbook-init.yml && \
-    yum -y autoremove && yum -y clean all
+    microdnf -y remove ansible-core && microdnf -y clean all
 
 RUN cp /usr/share/ssm-server/entrypoint.sh /opt/entrypoint.sh
 

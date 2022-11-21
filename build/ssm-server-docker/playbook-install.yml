@@ -6,43 +6,30 @@
   tasks:
     - name: Packages                   | Add SSM repository
       when: ansible_os_family == 'RedHat'
-      yum_repository:
-        name: ssm
-        description: SSM repo
-        baseurl: https://dl.shatteredsilicon.net/$releasever/ssm/RPMS/$basearch/
-        gpgkey: https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8
-        gpgcheck: yes
-        enabled: no
+      copy:
+        dest: /etc/yum.repos.d/ssm.repo
+        content: |
+          [ssm]
+          name=SSM repo
+          baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/RPMS/$basearch/
+          gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8
+          gpgcheck=1
+          enabled=0
 
     - name: Packages                   | Install OS tools
       when: ansible_os_family == 'RedHat'
-      yum: name={{ item }} state=installed
+      shell: microdnf -y install --nodocs --noplugins --best {{ item }}
       with_items:
-        - screen
-        - yum-utils
         - supervisor
         - logrotate
+        - python2-PyMySQL
         - python2-pip
-        - rpm-cron
 
     - name: cloud-init                 | Create dirs
       file: path={{ item }} state=directory
       with_items:
         - /var/lib/cloud/scripts/per-once
         - /var/lib/cloud/scripts/per-boot
-
-    - name: cloud-init                 | Create dirs
-      file: path={{ item }} state=directory owner=ssm
-      with_items:
-        - /opt/prometheus/data
-        - /opt/consul-data
-
-    - name: Percona Server for MySQL   | Install Python Modules
-      when: ansible_os_family == 'RedHat'
-      pip:
-        name:
-          - PyMySQL
-        extra_args: --user
 
     - name: Percona Server for MySQL   | Install Python 2 Modules
       when: ansible_os_family == 'RedHat'
@@ -90,16 +77,18 @@
 
     - name: SSM                        | Add local YUM repository
       when: ansible_os_family == 'RedHat'
-      yum_repository:
-        name: local
-        description: Local YUM repository - x86_64
-        baseurl: file:///tmp/RPMS
-        gpgcheck: no
-        enabled: no
+      copy:
+        dest: /etc/yum.repos.d/local.repo
+        content: |
+          [local]
+          name=Local repo
+          baseurl=file:///tmp/RPMS
+          gpgcheck=0
+          enabled=0
 
     - name: SSM                        | Install RPMs
       when: ansible_os_family == 'RedHat'
-      yum: name={{ item }} state=installed enablerepo=local
+      shell: microdnf -y --enablerepo local install --nodocs --noplugins --best {{ item }}
       with_items:
         - nginx
         - consul
@@ -114,16 +103,9 @@
         - ssm-client
         - ssm-manage
         - ssm-managed
-        - ssm-update
         - rds_exporter
         - mariadb
         - mariadb-server
-
-    - name: SSM                        | Fix nginx config
-      replace:
-        dest: /etc/nginx/nginx.conf
-        regexp: '^(\s*)listen'
-        replace: '\1#listen'
 
     - name: NGINX SSL Certificate      | Add script
       copy:

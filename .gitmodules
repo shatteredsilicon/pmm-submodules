@@ -30,10 +30,6 @@
 	path = sources/ssm-managed
 	url = https://github.com/shatteredsilicon/ssm-managed
 	branch = ssm-1.x
-[submodule "ssm-update"]
-	path = sources/ssm-update
-	url = https://github.com/shatteredsilicon/ssm-update
-	branch = ssm-1.x
 [submodule "ssm-server"]
 	path = sources/ssm-server
 	url = https://github.com/shatteredsilicon/ssm-server
