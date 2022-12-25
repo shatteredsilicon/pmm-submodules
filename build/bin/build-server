@@ -59,7 +59,7 @@ build() {
     # empty log file first
     > ${log_file}
 
-    # scan rkhunter log file
+    # check rkhunter log file
     check_rkhunter_log ${image_dir}/var/log/ssm-server-rkhunter.log ${log_file}
     rm -f ${image_dir}/var/log/ssm-server-rkhunter.log
 
@@ -70,9 +70,20 @@ build() {
     find ${image_dir} -type f -print0 | xargs -0 -n1 -P$(nproc) clamdscan --multiscan --fdpass --no-summary >> ${tmp_dir}/ssm-server-clamdscan.log
     rm -rf ${image_dir}
 
-    # scan clamdscan log file
+    # check clamdscan log file
     echo $'\n' >> ${log_file}
     check_clamdscan_log ${tmp_dir}/ssm-server-clamdscan.log ${log_file}
+    rm -f ${tmp_dir}/ssm-server-clamdscan.log
+
+    # check package checksum verification log file
+    echo $'\n' >> ${log_file}
+    check_rpm_verify_log ${image_dir}/var/log/ssm-server-rpm-verify.log ${log_file}
+    rm -f ${image_dir}/var/log/ssm-server-rpm-verify.log
+
+    # check orphan file scanning log file
+    echo $'\n' >> ${log_file}
+    check_orphan_file_log ${image_dir}/var/log/ssm-server-orphan-files.log ${log_file}
+    rm -f ${image_dir}/var/log/ssm-server-orphan-files.log
 
     if [ -z "${DOCKER_TAG}" ]; then
         docker tag ${image_id} shatteredsilicon/ssm-server:${ssm_version}
@@ -110,6 +121,26 @@ check_clamdscan_log() {
             echo "$line" >> "$dest_file"
         fi
     done < "$log_file"
+}
+
+check_rpm_verify_log() {
+    local log_file=$1
+    local dest_file=$2
+
+    echo $'package checksum verification\n=============================\n' >> "$dest_file"
+    if [ -s "$log_file" ]; then
+        cat "$log_file" >> "$dest_file"
+    fi
+}
+
+check_orphan_file_log() {
+    local log_file=$1
+    local dest_file=$2
+
+    echo $'orphan file scanning\n====================\n' >> "$dest_file"
+    if [ -s "$log_file" ]; then
+        cat "$log_file" >> "$dest_file"
+    fi
 }
 
 main() {
