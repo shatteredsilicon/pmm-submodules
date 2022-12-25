@@ -27,6 +27,6 @@ RUN microdnf -y install --nodocs --noplugins --best ansible-core sqlite && \
 
 RUN cp /usr/share/ssm-server/entrypoint.sh /opt/entrypoint.sh
 
-RUN rkhunter --propupd uname && rkhunter --check --disable system_configs_syslog --disable avail_modules --disable passwd_changes --disable group_changes
+RUN rkhunter --propupd uname && (rkhunter --check --novl --rwo --noappend-log --ns --disable system_configs_syslog --disable avail_modules --disable passwd_changes --disable group_changes > /var/log/ssm-server-rkhunter.log || true)
 
 CMD ["/opt/entrypoint.sh"]
