@@ -55,24 +55,26 @@ build() {
     mkdir -vp ${image_dir}
     rm -rf ${image_dir}/* && tar -C ${image_dir} -xf ${image_tar}
 
-    local log_file=${logs_dir}/security-audit-scanning.log
-    # empty log file first
-    > ${log_file}
-
-    # check rkhunter log file
-    check_rkhunter_log ${image_dir}/var/log/ssm-server-rkhunter.log ${log_file}
-    rm -f ${image_dir}/var/log/ssm-server-rkhunter.log
-
     > ${tmp_dir}/ssm-server-clamdscan.log
     find ${image_dir} -type d -exec chmod 0777 {} \;
     find ${image_dir} -type f ! -executable -exec chmod 0666 {} \;
     find ${image_dir} -type f -executable -exec chmod 0777 {} \;
     find ${image_dir} -type f -print0 | xargs -0 -n1 -P$(nproc) clamdscan --multiscan --fdpass --no-summary >> ${tmp_dir}/ssm-server-clamdscan.log
-    rm -rf ${image_dir}
+
+    local log_file=${logs_dir}/security-audit-scanning.log
+    local vt_files=${tmp_dir}/ssm-server-vt-files.log
+    local vt_log=${tmp_dir}/ssm-server-vt.log
+    > ${log_file}
+    > ${vt_files}
+    > ${vt_log}
+
+    # check rkhunter log file
+    check_rkhunter_log ${image_dir}/var/log/ssm-server-rkhunter.log ${log_file} ${vt_files}
+    rm -f ${image_dir}/var/log/ssm-server-rkhunter.log
 
     # check clamdscan log file
     echo $'\n' >> ${log_file}
-    check_clamdscan_log ${tmp_dir}/ssm-server-clamdscan.log ${log_file}
+    check_clamdscan_log ${tmp_dir}/ssm-server-clamdscan.log ${log_file} ${vt_files}
     rm -f ${tmp_dir}/ssm-server-clamdscan.log
 
     # check package checksum verification log file
@@ -82,8 +84,44 @@ build() {
 
     # check orphan file scanning log file
     echo $'\n' >> ${log_file}
-    check_orphan_file_log ${image_dir}/var/log/ssm-server-orphan-files.log ${log_file}
+    check_orphan_file_log ${image_dir}/var/log/ssm-server-orphan-files.log ${log_file} ${vt_files}
     rm -f ${image_dir}/var/log/ssm-server-orphan-files.log
+
+    # VirusTotal scanning
+    i=0
+    while [ $i -lt 100 ] && [ -s ${vt_files} ]; do
+        sleep 10
+
+        vt_hashes=()
+        while read -r line; do
+            vt_hashes+=("${line##* }")
+        done < "${vt_files}"
+
+        analysis_output="$(vt analysis ${vt_hashes[@]})"
+        entity_count=$(cat "${vt_files}" | wc -l)
+        entity=
+        echo "$analysis_output" | tac | while read -r line; do
+            entity="${line}"$'\n'"${entity}"
+            if [[ "$line" =~ ^"- _id:" ]]; then
+                if [[ "$entity" =~ "status: \"completed\"" ]]; then
+                    file_hash=$(sed -n "${entity_count}p" "${vt_files}")
+                    filename="${file_hash%% *}"
+                    sed -i "${entity_count}d" ${vt_files}
+                    if [[ "$entity" =~ (malicious|suspicious)': '[1-9] ]]; then
+                        entity=$(echo "$entity" | sed "2 i\  _filename: ${filename##${image_dir}}")
+                        echo "$entity" >> ${vt_log}
+                    fi
+                fi
+                entity_count=$((entity_count-1))
+            fi
+        done
+        i=$((i+1))
+    done
+
+    # vt scanning log file
+    echo $'\n' >> ${log_file}
+    check_vt_log "${vt_log}" ${log_file}
+    rm -f "${vt_log}"
 
     if [ -z "${DOCKER_TAG}" ]; then
         docker tag ${image_id} shatteredsilicon/ssm-server:${ssm_version}
@@ -96,6 +134,7 @@ build() {
 check_rkhunter_log() {
     local log_file=$1
     local dest_file=$2
+    local vt_files=$3
 
     echo $'rkhunter scanning\n=================\n' >> "$dest_file"
 
@@ -103,8 +142,12 @@ check_rkhunter_log() {
         while read -r line; do
             if [ -z "$line" ] || [[ "$line" =~ ^[[:space:]]+$ ]]; then
                 break
-            else
-                echo "$line" >> "$dest_file"
+            fi
+
+            echo "$line" >> "$dest_file"
+            local filename=$(echo "$line" | grep -oP '(?<=\[\d{2}:\d{2}:\d{2}\])\s*/.*(?=\s+\[ Warning \])' | awk '{$1=$1};1')
+            if [ -f "${image_dir}${filename}" ] && [ -s "${image_dir}${filename}" ]; then
+                vt scan file "${image_dir}${filename}" >> "${vt_files}"
             fi
         done < "$log_file"
     fi
@@ -113,12 +156,17 @@ check_rkhunter_log() {
 check_clamdscan_log() {
     local log_file=$1
     local dest_file=$2
+    local vt_files=$3
 
     echo $'clamav scanning\n===============\n' >> "$dest_file"
 
     while read -r line; do
         if ! [[ "$line" =~ ': OK'$ ]]; then
             echo "$line" >> "$dest_file"
+            local filename=$(echo ${line%%': '*} | awk '{$1=$1};1')
+            if [ -f "${image_dir}${filename}" ] && [ -s "${image_dir}${filename}" ]; then
+                vt scan file "${image_dir}${filename}" >> "${vt_files}"
+            fi
         fi
     done < "$log_file"
 }
@@ -136,8 +184,25 @@ check_rpm_verify_log() {
 check_orphan_file_log() {
     local log_file=$1
     local dest_file=$2
+    local vt_files=$3
 
     echo $'orphan file scanning\n====================\n' >> "$dest_file"
+
+    if [ -s "$log_file" ]; then
+        cat "$log_file" >> "$dest_file"
+        while read -r line; do
+            if [ -f "${image_dir}${line}" ] && [ -s "${image_dir}${line}" ]; then
+                vt scan file "${image_dir}${line}" >> "${vt_files}"
+            fi
+        done < "$log_file"
+    fi
+}
+
+check_vt_log() {
+    local log_file=$1
+    local dest_file=$2
+
+    echo $'vt scanning\n===========' >> "$dest_file"
     if [ -s "$log_file" ]; then
         cat "$log_file" >> "$dest_file"
     fi
