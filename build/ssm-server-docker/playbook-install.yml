@@ -72,7 +72,7 @@
         uid: 472
         name: grafana
         group: grafana
-        home: /etc/grafana
+        home: /var/lib/grafana
         shell: /sbin/nologin
 
     - name: SSM                        | Add local YUM repository
