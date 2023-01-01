@@ -31,6 +31,7 @@
 
 - `make` shipped with RHEL 8
 - `docker` shipped with RHEL 8
+- [vt-cli](https://github.com/VirusTotal/vt-cli)
 
 ## Build
 
