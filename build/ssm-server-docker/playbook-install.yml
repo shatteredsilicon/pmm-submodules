@@ -104,6 +104,7 @@
         - ssm-manage
         - ssm-managed
         - rds_exporter
+        - snmp_exporter
         - mariadb
         - mariadb-server
 
