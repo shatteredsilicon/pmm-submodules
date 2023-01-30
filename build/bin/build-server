@@ -55,6 +55,7 @@ build() {
     mkdir -vp ${image_dir}
     rm -rf ${image_dir}/* && tar -C ${image_dir} -xf ${image_tar}
 
+    mkdir -vp "${tmp_dir}"
     > ${tmp_dir}/ssm-server-clamdscan.log
     find ${image_dir} -type d -exec chmod 0777 {} \;
     find ${image_dir} -type f ! -executable -exec chmod 0666 {} \;
@@ -64,6 +65,7 @@ build() {
     local log_file=${logs_dir}/security-audit-scanning.log
     local vt_files=${tmp_dir}/ssm-server-vt-files.log
     local vt_log=${tmp_dir}/ssm-server-vt.log
+    mkdir -p "${logs_dir}"
     > ${log_file}
     > ${vt_files}
     > ${vt_log}
