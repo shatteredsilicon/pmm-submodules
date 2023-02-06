@@ -28,7 +28,7 @@ build_rpm() {
     local srpm_prefix="${package}${version:+-$version}"
 
     mkdir -p "${result_dir}"
-    mock -r ssm-8-${arch} --cleanup-after --config-opts root=ssm-8-${arch}-$(tr -dc A-Za-z0-9 </dev/urandom | head -c 13) --resultdir ${result_dir} --rebuild ${srpm_dir}/${srpm_prefix}*.src.rpm
+    mock -r ssm-8-${arch} --resultdir ${result_dir} --rebuild ${srpm_dir}/${srpm_prefix}*.src.rpm
     mv ${result_dir}/${package}*.${arch}.rpm ${rpm_dir}/
 }
 
