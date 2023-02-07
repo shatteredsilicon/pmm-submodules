@@ -27,24 +27,24 @@ shell_quote_string() {
 }
 
 build_rpms() {
-    docker run --privileged -e ENV_DEV --rm -v ${root_dir}:/home/builder/ssm-submodules ${rpmbuild_docker_image} sh -c "
-        set -o errexit
-        set -o xtrace
+    pids=()
+    for package in $(echo ${PACKAGES[@]}); do
+        docker run --privileged -e ENV_DEV --rm -v ${root_dir}:/home/builder/ssm-submodules ${rpmbuild_docker_image} sh -c "
+            set -o errexit
+            set -o xtrace
 
-        pids=()
-        for package in $(echo ${PACKAGES[@]}); do
-            /home/builder/ssm-submodules/build/bin/build-rpm \${package} & pids+=(\$!)
-        done
-        for pid in \"\${pids[@]}\"; do
-            wait \"\${pid}\"
-        done
+            /home/builder/ssm-submodules/build/bin/build-rpm ${package}
 
-        # give host user permission
-        find /home/builder/ssm-submodules/tmp -type d -exec chmod 0777 {} \;
-        find /home/builder/ssm-submodules/tmp -type f -exec chmod 0666 {} \;
-        find /home/builder/ssm-submodules/results/RPMS -type d -exec chmod 0777 {} \;
-        find /home/builder/ssm-submodules/results/RPMS -type f -exec chmod 0666 {} \;
-    "
+            # give host user permission
+            find /home/builder/ssm-submodules/tmp -type d -exec chmod 0777 {} \;
+            find /home/builder/ssm-submodules/tmp -type f -exec chmod 0666 {} \;
+            find /home/builder/ssm-submodules/results/RPMS -type d -exec chmod 0777 {} \;
+            find /home/builder/ssm-submodules/results/RPMS -type f -exec chmod 0666 {} \;
+        " & pids+=($!)
+    done
+    for pid in "${pids[@]}"; do
+        wait "${pid}"
+    done
 }
 
 main() {
@@ -64,12 +64,8 @@ main() {
     fi
 
     if [[ -n "${WITHOUT_DOCKER}" ]] && [[ ${WITHOUT_DOCKER} -eq 1 ]]; then
-        local pids=()
         for package in ${PACKAGES[@]}; do
-            ${bin_dir}/build-rpm ${package} & pids+=($!)
-        done
-        for pid in "${pids[@]}"; do
-            wait "${pid}"
+            ${bin_dir}/build-rpm ${package}
         done
     else
         # give docker container user permission
