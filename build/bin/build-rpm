@@ -28,7 +28,7 @@ build_rpm() {
     local srpm_prefix="${package}${version:+-$version}"
 
     mkdir -p "${result_dir}"
-    mock -r ssm-8-${arch} --resultdir ${result_dir} --rebuild ${srpm_dir}/${srpm_prefix}*.src.rpm
+    mock -r ssm-8-${arch} -n --resultdir ${result_dir} --rebuild ${srpm_dir}/${srpm_prefix}*.src.rpm
     mv ${result_dir}/${package}*.${arch}.rpm ${rpm_dir}/
 }
 

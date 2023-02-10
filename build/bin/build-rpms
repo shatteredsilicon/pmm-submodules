@@ -29,7 +29,9 @@ shell_quote_string() {
 build_rpms() {
     pids=()
     for package in $(echo ${PACKAGES[@]}); do
-        docker run --privileged -e ENV_DEV --rm -v ${root_dir}:/home/builder/ssm-submodules ${rpmbuild_docker_image} sh -c "
+        local volume_name=ssm-8-${package}-mock-cache
+        docker volume create ${volume_name}
+        docker run --privileged -e ENV_DEV --rm -v ${volume_name}:/var/cache/mock -v ${root_dir}:/home/builder/ssm-submodules ${rpmbuild_docker_image} sh -c "
             set -o errexit
             set -o xtrace
 
