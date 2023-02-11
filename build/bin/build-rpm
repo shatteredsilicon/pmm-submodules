@@ -2,6 +2,7 @@
 
 set -o errexit
 set -o xtrace
+umask 0000
 
 . $(dirname $0)/vars
 
@@ -36,7 +37,7 @@ create_rpm() {
     local package=$1
     local version=
 
-    mkdir -p ${rpm_dir}
+    mkdir -p ${srpm_dir} ${rpm_dir}
 
     pushd ${submodule_dir}/$package
         if [[ -d .git ]] || [[ -f .git ]]; then
