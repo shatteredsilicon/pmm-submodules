@@ -2,6 +2,7 @@
 
 set -o errexit
 set -o xtrace
+umask 0000
 
 . $(dirname $0)/vars
 
@@ -28,7 +29,7 @@ build_rpm() {
     local srpm_prefix="${package}${version:+-$version}"
 
     mkdir -p "${result_dir}"
-    mock -r ssm-8-${arch} --resultdir ${result_dir} --rebuild ${srpm_dir}/${srpm_prefix}*.src.rpm
+    mock -r ssm-8-${arch} -n --resultdir ${result_dir} --rebuild ${srpm_dir}/${srpm_prefix}*.src.rpm
     mv ${result_dir}/${package}*.${arch}.rpm ${rpm_dir}/
 }
 
@@ -36,7 +37,7 @@ create_rpm() {
     local package=$1
     local version=
 
-    mkdir -p ${rpm_dir}
+    mkdir -p ${srpm_dir} ${rpm_dir}
 
     pushd ${submodule_dir}/$package
         if [[ -d .git ]] || [[ -f .git ]]; then

@@ -2,6 +2,7 @@
 
 set -o errexit
 set -o xtrace
+umask 0000
 
 . $(dirname $0)/vars
 

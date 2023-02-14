@@ -2,6 +2,7 @@
 
 set -o errexit
 set -o xtrace
+umask 0000
 
 . $(dirname $0)/vars
 
@@ -27,19 +28,18 @@ shell_quote_string() {
 }
 
 build_rpms() {
+    mkdir -vp ${result_dir} ${tmp_dir}
+
     pids=()
     for package in $(echo ${PACKAGES[@]}); do
-        docker run --privileged -e ENV_DEV --rm -v ${root_dir}:/home/builder/ssm-submodules ${rpmbuild_docker_image} sh -c "
+        local volume_name=ssm-8-${package}-mock-cache
+        docker volume create ${volume_name}
+        docker run --privileged -e ENV_DEV --rm -v ${volume_name}:/var/cache/mock -v ${root_dir}:/home/builder/ssm-submodules ${rpmbuild_docker_image} sh -c "
             set -o errexit
             set -o xtrace
+            umask 0000
 
             /home/builder/ssm-submodules/build/bin/build-rpm ${package}
-
-            # give host user permission
-            find /home/builder/ssm-submodules/tmp -type d -exec chmod 0777 {} \;
-            find /home/builder/ssm-submodules/tmp -type f -exec chmod 0666 {} \;
-            find /home/builder/ssm-submodules/results/RPMS -type d -exec chmod 0777 {} \;
-            find /home/builder/ssm-submodules/results/RPMS -type f -exec chmod 0666 {} \;
         " & pids+=($!)
     done
     for pid in "${pids[@]}"; do
@@ -68,13 +68,6 @@ main() {
             ${bin_dir}/build-rpm ${package}
         done
     else
-        # give docker container user permission
-        mkdir -vp ${root_dir}/results/RPMS
-        find ${root_dir}/tmp -type d -exec chmod 0777 {} \;
-        find ${root_dir}/tmp -type f -exec chmod 0666 {} \;
-        find ${root_dir}/results/RPMS -type d -exec chmod 0777 {} \;
-        find ${root_dir}/results/RPMS -type f -exec chmod 0666 {} \;
-
         build_rpms
     fi
 }

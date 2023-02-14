@@ -2,6 +2,7 @@
 
 set -o errexit
 set -o xtrace
+umask 0000
 
 . $(dirname $0)/vars
 
@@ -38,12 +39,6 @@ build_srpms() {
         for pid in \"\${pids[@]}\"; do
             wait \"\${pid}\"
         done
-
-        # give host user permission
-        find /home/builder/ssm-submodules/{logs,docs,tmp} -type d -exec chmod 0777 {} \;
-        find /home/builder/ssm-submodules/{logs,docs,tmp} -type f -exec chmod 0666 {} \;
-        find /home/builder/ssm-submodules/results/SRPMS -type d -exec chmod 0777 {} \;
-        find /home/builder/ssm-submodules/results/SRPMS -type f -exec chmod 0666 {} \;
     "
 }
 
@@ -72,14 +67,7 @@ main() {
             wait "${pid}"
         done
     else
-        # give docker container user permission
-        mkdir -vp ${root_dir}/{results,docs,logs,tmp}
-        mkdir -vp ${root_dir}/results/SRPMS
-        find ${root_dir}/{logs,docs,tmp} -type d -exec chmod 0777 {} \;
-        find ${root_dir}/{logs,docs,tmp} -type f -exec chmod 0666 {} \;
-        find ${root_dir}/results/SRPMS -type d -exec chmod 0777 {} \;
-        find ${root_dir}/results/SRPMS -type f -exec chmod 0666 {} \;
-
+        mkdir -vp ${result_dir} ${docs_dir} ${logs_dir} ${tmp_dir}
         build_srpms
     fi
 }
