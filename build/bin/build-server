@@ -29,6 +29,9 @@ build() {
         umask 0000
 
         createrepo_c --update /home/builder/RPMS
+        # give host user permission
+        find /home/builder/RPMS/ -type d -exec chmod 0777 {} \;
+        find /home/builder/RPMS/ -type f -exec chmod 0666 {} \;
     "
     for rpm in $(cd ${rpm_dir}; find . -name '*.rpm'); do
         echo $rpm
