@@ -5,27 +5,8 @@ set -o xtrace
 
 . $(dirname $0)/vars
 
-mkdir -p ${buildimg_build_dir}
-cp -r ${root_dir}/build/rpmbuild-docker/* ${buildimg_build_dir}/
-docker build --squash -t ${rpmbuild_docker_image}-tmp:latest ${buildimg_build_dir}/
-# run mock --init to initialize chroot
-container_id_file=${tmp_dir}/rpmbuild-container-id
-rm -f ${container_id_file}
-docker run --privileged --cidfile ${container_id_file} ${rpmbuild_docker_image}-tmp:latest sh -c "mock -r ssm-8-$(rpm --eval \"%{_arch}\") --init"
-container_id=$(cat ${container_id_file})
-docker commit ${container_id} ${rpmbuild_docker_image}:latest
-docker rm ${container_id}
+docker build -t "${rpmbuild_docker_image}:latest" "${root_dir}/build/rpmbuild-docker"
 
 # use clamd@scan service to scan the docker image
-image_tar=${tmp_dir}/rpmbuild-image.tar
-image_dir=${tmp_dir}/rpmbuild-image
-cid=$(docker create ${rpmbuild_docker_image}:latest)
-docker export $cid -o ${image_tar}
-docker rm ${cid}
-mkdir -vp ${image_dir}
-rm -rf ${image_dir}/* && tar -C ${image_dir} -xf ${image_tar} || true
-find ${image_dir} -type d -exec chmod 0777 {} \;
-find ${image_dir} -type f ! -executable -exec chmod 0666 {} \;
-find ${image_dir} -type f -executable -exec chmod 0777 {} \;
-find ${image_dir} -type f -print0 | xargs -0 -n1 -P$(nproc) clamdscan --multiscan --fdpass --quiet
-rm -rf ${image_dir}
+docker save "${rpmbuild_docker_image}:latest" | clamdscan --quiet -
+
