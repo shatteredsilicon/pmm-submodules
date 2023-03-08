@@ -15,5 +15,5 @@ deb_dir=${result_dir}/DEBS
 logs_dir=${root_dir}/logs
 docs_dir=${root_dir}/docs
 rpmbuild_docker_image=${RPMBUILD_DOCKER_IMAGE:-"shatteredsilicon/rpmbuild"}
-packages=(ssm-qan-app ssm-client percona-toolkit-ssm-minimal ssm-dashboards ssm-manage ssm-managed ssm-server ssm-qan-api consul orchestrator rds_exporter prometheus grafana)
+packages=(ssm-qan-app ssm-client percona-toolkit-ssm-minimal ssm-dashboards ssm-manage ssm-managed ssm-server ssm-qan-api consul orchestrator rds_exporter snmp_exporter prometheus grafana)
 deb_packages=(ssm-client)
