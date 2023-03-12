@@ -50,16 +50,36 @@ build() {
     docker build --squash --no-cache --build-arg ssm_version=${ssm_version} --iidfile ${image_id_file} ${server_build_dir}/
     local image_id=$(cat ${image_id_file})
 
+    local origin_image_tar=${tmp_dir}/ssm-server-image.tar
+    local origin_image_dir=${tmp_dir}/ssm-server-image
+    local origin_cid=$(docker create ${image_id})
+    docker export $origin_cid -o ${origin_image_tar}
+    docker rm ${origin_cid}
+    mkdir -vp ${origin_image_dir}
+    rm -rf ${origin_image_dir}/* && tar -C ${origin_image_dir} -xf ${origin_image_tar}
+    find ${origin_image_dir} -type d -exec chmod 0777 {} \;
+    find ${origin_image_dir} -type f -exec chmod 0666 {} \;
+
+    # docker-slim
+    local slim_image_name=shatteredsilicon/ssm-server-slim:latest
+    local slim_base_path=${tmp_dir}/docker-slim
+    slim --state-path ${slim_base_path} build --target ${image_id} --tag ${slim_image_name} --include-path-file "${docker_slim_dir}/include-path" --include-exe-file "${docker_slim_dir}/include-exe"
+
     # use clamd@scan service to scan the docker image
-    local image_tar=${tmp_dir}/ssm-server-image.tar
-    local image_dir=${tmp_dir}/ssm-server-image
-    local cid=$(docker create ${image_id})
+    local image_tar=${tmp_dir}/ssm-server-slim-image.tar
+    local image_dir=${tmp_dir}/ssm-server-slim-image
+    local cid=$(docker create ${slim_image_name})
     docker export $cid -o ${image_tar}
     docker rm ${cid}
     mkdir -vp ${image_dir}
     rm -rf ${image_dir}/* && tar -C ${image_dir} -xf ${image_tar}
+    find ${image_dir} -type d -exec chmod 0777 {} \;
+    find ${image_dir} -type f -exec chmod 0666 {} \;
 
-    mkdir -vp "${tmp_dir}"
+    local removed_log_file=${logs_dir}/docker-slim-removed-files.log
+    > ${removed_log_file}
+    check_removed_files ${origin_image_dir} ${image_dir} ${removed_log_file} ${image_id}
+
     > ${tmp_dir}/ssm-server-clamdscan.log
     find ${image_dir} -type d -exec chmod 0777 {} \;
     find ${image_dir} -type f ! -executable -exec chmod 0666 {} \;
@@ -130,11 +150,14 @@ build() {
     check_vt_log "${vt_log}" ${log_file}
     rm -f "${vt_log}"
 
+    # clean temporary files/directories
+    rm -rf "${image_tar}" "${image_dir}" "${origin_image_tar}" "${origin_image_dir}" "${slim_base_path}"
+
     if [ -z "${DOCKER_TAG}" ]; then
-        docker tag ${image_id} shatteredsilicon/ssm-server:${ssm_version}
-        docker tag ${image_id} shatteredsilicon/ssm-server:latest
+        docker tag ${slim_image_name} shatteredsilicon/ssm-server:${ssm_version}
+        docker tag ${slim_image_name} shatteredsilicon/ssm-server:latest
     else
-        docker tag ${image_id} ${DOCKER_TAG}
+        docker tag ${slim_image_name} ${DOCKER_TAG}
     fi
 }
 
@@ -225,6 +248,35 @@ check_vt_log() {
     if [ -s "$log_file" ]; then
         cat "$log_file" >> "$dest_file"
     fi
+}
+
+check_removed_files() {
+    local origin_image_dir=$1
+    local slim_image_dir=$2
+    local log_file=$3
+    local origin_image_id=$4
+
+    while read -r filename; do
+        if ! [[ -f "${slim_image_dir%%/}/${filename}" ]]; then
+            echo "${filename##'.'}" >> "${log_file}"
+        fi
+    done < <(cd "${origin_image_dir}" ; find . -type f)
+
+    docker run --rm -v $(dirname "${log_file}"):/root/logs ${origin_image_id} sh -c "
+        set -o errexit
+        set -o xtrace
+
+        log_file=/root/logs/$(basename ${log_file})
+        cp \${log_file} /tmp/docker-slim-removed-files.log
+        i=1
+        while read -r line; do
+            package=\"\$(rpm -qf \"\${line}\" | head -n 1)\" || true
+            if ! [[ \"\${package}\" =~ 'is not owned by any package'$ ]]; then
+                sed -i \"\${i}s/$/: \${package}/\" \${log_file}
+            fi
+            i=\$((i+1))
+        done < /tmp/docker-slim-removed-files.log
+    "
 }
 
 main() {
