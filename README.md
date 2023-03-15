@@ -25,7 +25,6 @@
     + [Process of building rpm](#process-of-building-rpm)
         * [Building srpm first](#building-srpm-first)
         * [Building rpm with mock](#building-rpm-with-mock)
-  * [See also](#see-also)
 
 ## Requirements
 
@@ -362,8 +361,3 @@ rpms: submodules srpms
     ```
 
     to build `.rpm` package and put it into `results/RPMS`.
-
-
-## See also
-
-- [Fixed vulnerabilities](docs/fixed-vulnerabilities.md)

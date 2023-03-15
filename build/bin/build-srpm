@@ -605,7 +605,7 @@ gen_fixed_vulnerabilities_md() {
     local package=$1
     local file=$2
 
-    mkdir -p ${docs_dir}/fixed-vulnerabilities
+    mkdir -p ${logs_dir}/fixed-vulnerabilities
     content=$'| id | path | title | desc | cvss | ref |\n| --- | --- | --- | --- | --- | --- |'
 
     i=0
@@ -625,7 +625,7 @@ gen_fixed_vulnerabilities_md() {
         i=$((i+1))
     done
 
-    echo "${content}" > ${docs_dir}/fixed-vulnerabilities/${package}.md
+    echo "${content}" > ${logs_dir}/fixed-vulnerabilities/${package}.md
 }
 
 create_srpm() {
