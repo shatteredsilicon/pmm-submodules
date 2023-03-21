@@ -77,6 +77,7 @@ function setup()
 	mkdir -vp "${GOPATH}/"{src,pkg}
 	mkdir -vp "${NPMPATH}/src"
 	mkdir -vp "${YARNPATH}/src"
+
 	mkdir -vp "${buildlog_dir}"
 	mkdir -vp "${srpm_dir}"
 
@@ -136,7 +137,7 @@ function build_generic_tarball()
 		cp -rp "${packagesrc}" "${pkgroot}/../"
 		(
 			cd "${pkgroot}/${workdir}"
-			# TODO: vuln scanning
+			rm -rf vendor	# Remove the vendor directory as some packages (eg alecthomas/kingpin.v2) fail on a second build attempt
 			trace "${package} : Pulling go deps in $(pwd)"
 			GO111MODULE=off dep ensure || fatal "${package} : dep ensure failed"
 			trace "${package} : Auditing go packages"
@@ -241,7 +242,17 @@ function assemble_gitsubmodule()
 
 		# Choose assembly method per package
 		case "${package}" in
-			ssm-client) fatal "Fix ssm-client" ;;		#TODO
+			ssm-client)
+				mkdir -p "${tmp_dir}/ssm-client"
+				for submod in mongodb_exporter mysqld_exporter postgres_exporter proxysql_exporter pid-watchdog qan-agent node_exporter ssm-client
+				do
+					subversion=$(cd "${submodule_dir}/${submod}" ; git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1 | sed 's/^v//')
+					build_generic_tarball "${submod}" "${submodule_dir}/${submod}" "${subversion}" || fatal "Failed to build ${submod} tarball for ssm-client"
+					mv ${RPMBUILDROOT}/SOURCES/${submod}*.tar.gz "${tmp_dir}/ssm-client"
+				done
+				trace "ssm-client : Building agregate tarball"
+				tar -czf "${RPMBUILDROOT}/SOURCES/ssm-client-${version}.tar.gz" -C "${tmp_dir}" ssm-client
+				;;
 			ssm-dashboards) build_generic_tarball "${package}" "${submodule_dir}/${package}" "${version}" "pmm-app" ;;
 			ssm-server) build_generic_tarball "${package}" "${submodule_dir}/${package}" "${version}" "password-page" ;;
 			*) build_generic_tarball "${package}" "${submodule_dir}/${package}" "${version}" ;;
@@ -288,6 +299,19 @@ function assemble_3rdparty()
 	)
 }
 
+# Package a submodule in the sources dir as a tarball
+function tarball_submodule()
+{
+	package="${1}"
+
+	if [ -r "${submodule_dir}/${package}/.git" ]
+	then
+		assemble_gitsubmodule "${package}"
+	else
+		assemble_3rdparty "${package}"
+	fi
+}
+
 # Create the SRPM for a given package name
 function create_srpm()
 {
@@ -298,12 +322,7 @@ function create_srpm()
 		rm -rf ${tmp_dir}/rpmbuild/SOURCES/${package}*
 		rm -f ${srpm_dir}/${package}*.src.rpm
 
-		if [ -r "${submodule_dir}/${package}/.git" ]
-		then
-			assemble_gitsubmodule "${package}"
-		else
-			assemble_3rdparty "${package}"
-		fi
+		tarball_submodule "${package}"
 
 		trace "${package} : Building SRPM"
 		rpmbuild -bs --define "debug_package %{nil}" --define "_topdir ${RPMBUILDROOT}" "${RPMBUILDROOT}/SPECS/${package}.spec"
@@ -311,14 +330,16 @@ function create_srpm()
 	) | tee >(
 		if (grep ': WARN :' > /dev/null)
 		then
-			trace "${package} : SRPM Built with warnings"
+			WARN=1
 		else
-			if [ compgen -G "${srpm_dir}/${package}*.src.rpm" > /dev/null ]
-			then
-				trace "${package} : SRPM Built"
-			else
-				trace "${package} : SRPM FAILED TO BUILD"
-			fi
+			WARN=""
+		fi
+
+		if ( compgen -G "${srpm_dir}/${package}*.src.rpm" > /dev/null )
+		then
+			trace "${package} : SRPM Built${WARN:+ with warnings}"
+		else
+			trace "${package} : SRPM FAILED TO BUILD"
 		fi
 	)
 }
