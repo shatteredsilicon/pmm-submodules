@@ -28,7 +28,7 @@ shell_quote_string() {
 }
 
 build_srpms() {
-    docker run --rm -e ENV_DEV -v ${root_dir}:/home/builder/ssm-submodules --mount 'type=volume,src=ssm-build-cache,dst=/mnt/cache' ${rpmbuild_docker_image} sh -c "
+    docker run --rm -e ENV_DEV -v ${root_dir}:/home/builder/ssm-submodules --mount 'type=volume,src=ssm-build-cache,dst=/mnt/cache' --mount 'type=tmpfs,dst=/mnt/tmp' ${rpmbuild_docker_image} sh -c "
     	/home/builder/ssm-submodules/build/bin/build-srpm all
     "
 }
