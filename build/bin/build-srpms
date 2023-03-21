@@ -28,17 +28,8 @@ shell_quote_string() {
 }
 
 build_srpms() {
-    docker run --rm -e ENV_DEV -v ${root_dir}:/home/builder/ssm-submodules ${rpmbuild_docker_image} sh -c "
-        set -o errexit
-        set -o xtrace
-
-        pids=()
-        for package in $(echo ${PACKAGES[@]}); do
-            /home/builder/ssm-submodules/build/bin/build-srpm \${package} & pids+=(\$!)
-        done
-        for pid in \"\${pids[@]}\"; do
-            wait \"\${pid}\"
-        done
+    docker run --rm -e ENV_DEV -v ${root_dir}:/home/builder/ssm-submodules --mount 'type=volume,src=ssm-build-cache,dst=/mnt/cache' ${rpmbuild_docker_image} sh -c "
+    	/home/builder/ssm-submodules/build/bin/build-srpm all
     "
 }
 

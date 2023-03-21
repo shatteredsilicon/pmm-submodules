@@ -1,757 +1,364 @@
 #!/bin/bash
 
 set -o errexit
-set -o xtrace
+#set -o xtrace
 umask 0000
 
 . $(dirname $0)/vars
 
-usage () {
-    cat <<EOF
-Usage: $0 [OPTIONS] PACKAGE
+RPMBUILDROOT="${tmp_dir}/rpmbuild/"
+export GOPATH="${tmp_dir}/go"
+export NPMPATH="${tmp_dir}/npm"
+export YARNPATH="${tmp_dir}/yarn"
+export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
+START="$(date +%s)"
+auditto="/tmp"
 
-    The following options may be given :
-        --help) usage ;;
+# Display usage message and quit
+function usage ()
+{
+	cat <<-EOF
+		Usage: $0 [OPTIONS] PACKAGE
 
-    The following packages may be given:
-        ${PACKAGES[@]}
+			The following options may be given :
+			    --help) usage ;;
 
-Example $0 ssm-client
-EOF
-        exit 1
+			The following packages may be given:
+			    ${packages[@]}
+
+		Example $0 ${packages[0]}
+		EOF
+	exit 1
 }
 
-copy_specs() {
-    local package=$1
-    local version=$2
-
-    pushd ${submodule_dir}/$package
-        if [ -n "${version}" ]; then
-            sed "s/%{_version}/${version##v}/g" ${package}.spec > ${tmp_dir}/rpmbuild/SPECS/${package}.spec
-        else
-            cp -f ${package}.spec ${tmp_dir}/rpmbuild/SPECS/
-        fi
-    popd
+function fatal()
+{
+	printf "%5d : FATAL : %d : %s\n" $(($(date +%s) - ${START})) "${BASH_LINENO[0]}" "$1" 1>&2
+	exit -2
 }
 
-build_srpm() {
-    local package=$1
-    local version=$2
-
-    rpmbuild -bs --define "debug_package %{nil}" --define "_topdir ${tmp_dir}/rpmbuild" ${tmp_dir}/rpmbuild/SPECS/${package}.spec
-
-    mkdir -p ${srpm_dir}
-    mv ${tmp_dir}/rpmbuild/SRPMS/${package}*.src.rpm ${srpm_dir}
+function warn()
+{
+	printf "%5d : WARN : %d : %s\n" $(($(date +%s) - ${START})) "${BASH_LINENO[0]}" "$1"
 }
 
-build_generic_tarball() {
-    local package=$1
-    local version=$2
-    local workdir=$3
-    local tarball=
-
-    if [ -n "${version}" ]; then
-        tarball="${package}-${version##v}.tar.gz"
-    else
-        tarball="${package}.tar.gz"
-    fi
-
-    local wrap_dir=${tmp_dir}/${package}-wrap
-    cp -r ${submodule_dir}/$package ${wrap_dir}
-    pushd ${wrap_dir}
-        if [ -f "${tmp_dir}/rpmbuild/SOURCES/${tarball}" ]; then
-            echo "${tarball} exists, skipped"
-            return
-        else
-            pull_dep_in_place $package "" ${workdir}
-        fi
-    popd
-
-    tar -C $(dirname ${wrap_dir}) -czf ${tmp_dir}/rpmbuild/SOURCES/${tarball} --transform "s/$(basename ${wrap_dir})/${package}/" $(basename ${wrap_dir})
-    rm -rf ${wrap_dir}
+function trace()
+{
+	printf "%5d : %s\n" $(($(date +%s) - ${START})) "$1"
 }
 
-build_ssm_client_tarball() {
-    local name=$1
-    local version=$2
-    local sub_packages=(mongodb_exporter mysqld_exporter postgres_exporter proxysql_exporter pid-watchdog qan-agent node_exporter ssm-client)
-    local subdir=${tmp_dir}/rpmbuild/SOURCES/${name}-parent
-
-    mkdir -p $subdir
-    local pids=()
-    for sub_package in ${sub_packages[@]}; do
-        local work_dir=${tmp_dir}/${name}-${sub_package}
-        cp -r ${submodule_dir}/$sub_package ${work_dir}
-        pushd ${work_dir}
-            local tag=$(git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1)
-            if [ -f "${subdir}/${sub_package}-${tag##v}.tar.gz" ]; then
-                echo "${sub_package}-${tag##v}.tar.gz exists, skipped"
-            else
-                pull_dep_in_place $sub_package && tar -C $(dirname ${work_dir}) -czf ${subdir}/${sub_package}-${tag##v}.tar.gz --transform "s/$(basename ${work_dir})/${sub_package}/" $(basename ${work_dir}) & pids+=($!)
-            fi
-        popd
-    done
-    for pid in "${pids[@]}"; do
-        wait "${pid}"
-    done
-    for sub_package in ${sub_packages[@]}; do
-        rm -rf ${tmp_dir}/${name}-${sub_package}
-    done
-
-    pushd ${tmp_dir}/rpmbuild/SOURCES
-        tar -C $(dirname ${subdir}) -czf ${name}-${version##v}.tar.gz --transform "s/$(basename ${subdir})/${name}/" $(basename ${subdir})
-        rm -rf ${name}
-    popd
-    rm -rf ${subdir}
+# Check that the external commands we'll need are present
+function check_commands()
+{
+	for cmd in git rpmbuild spectool go dep node npm yarn;
+	do
+		if ! command -v "${cmd}" &> /dev/null
+		then
+			echo "'${cmd}' is required to run this script"
+			exit 1
+		else
+			ver="unknown"
+			if [ "${cmd}" = "go" -o "${cmd}" = "dep" ]
+			then
+				ver="$("${cmd}" version | grep version | head -1)"
+			else
+				ver="$("${cmd}" --version)"
+			fi
+			trace "Version : ${cmd} : ${ver}"
+		fi
+	done
 }
 
-build_3rd_tallbar() {
-    local package=$1
-    local dep_src=$2
-    local dep_dest=$3
+# Perform general setup, creating directories and such
+function setup()
+{
+	[ -n "${tmp_dir}" -a -d "${tmp_dir}" ] || fatal "Error: tmp_dir (${tmp_dir}) not a directory"
+	mkdir -vp "${RPMBUILDROOT}"{SOURCES,SPECS,BUILD,SRPMS,RPMS}
+	mkdir -vp "${GOPATH}/"{src,pkg}
+	mkdir -vp "${NPMPATH}/src"
+	mkdir -vp "${YARNPATH}/src"
+	mkdir -vp "${buildlog_dir}"
+	mkdir -vp "${srpm_dir}"
 
-    pushd ${tmp_dir}/rpmbuild/SOURCES
-        local tarball=$(find . -maxdepth 1 -type f -iname "${package}*.tar.gz" | head -1)
-        if [ -n "${tarball}" ]; then
-            tar -zxf ${tarball}
-            local package_dir=$(find . -maxdepth 1 -type d -iname "${package}*" | head -1)
-            local local_lockfile=
+	#Remove all rpmbuild sources and outputs
+	rm -f "${RPMBUILDROOT}/SOURCES/"*
+	rm -f "${RPMBUILDROOT}/SPECS/"*
+	rm -f "${RPMBUILDROOT}/SRPMS/"*
 
-            if [ -n "${dep_src}" ]; then
-                if [[ -f "${package_dir}/${dep_dest}" ]]; then
-                    local_lockfile="${dep_dest}.build_3rd_tallbar"
-                    cp -f ${package_dir}/${dep_dest} ${package_dir}/${local_lockfile}
-                fi
-                cp ${dep_src} ${package_dir}/${dep_dest}
-            fi
-            pushd ${package_dir}
-                pull_dep_in_place $package "${local_lockfile}"
-            popd
-            rm -f ${tarball}
-            tar -czf ${tarball} ${package_dir}
-            rm -rf ${package_dir}
-        fi
-    popd
+	#Make sure cache folders exist
+	for c in "${npm_config_cache}" "${GOCACHE}" "${YARN_CACHE_FOLDER}" "${NANCY_CACHE}"
+	do
+		if [ -n "${c}" ]
+		then
+			mkdir -vp "${c}"
+		fi
+	done
+
+	rootver="$(cd "$(dirname "$0")" ; git rev-parse --short  HEAD)"
+	auditto="${audit_dir}/${rootver}"
+	mkdir -vp "${auditto}"
+	trace "${package} : Auditing to ${auditto}"
 }
 
-pull_dep_in_place() {
-    local package=$1
-    local local_lockfile=$2
-    local workdir=$3
-    local is_excluded=0
-    local current_dir=$(pwd)
+function build_generic_tarball()
+{
+	package="${1}"
+	packagesrc="${2}"
+	version="${3}"
+	workdir="${4}"
 
-    local excluded_packages=(node-sass)
-    [[ " ${excluded_packages[*]} " == *" ${package} "* ]] && is_excluded=1
+	tarball="${package}${version:+-${version}}.tar.gz"
 
-    # make sure logs dir exists
-    mkdir -p ${logs_dir}/{vulnerability-diffs,fixed-vulnerabilities}
 
-    if [[ -f ${workdir:+$workdir/}yarn.lock ]]; then
-        local yarn_cache_path=${tmp_dir}/yarn/${package}-cache
-        export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
-        export npm_config_python=/usr/bin/python2
+	pkgroot=""
 
-        if [[ $is_excluded -eq 0 ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
-            cp -r ${current_dir} ${tmp_dir}/${package}
-            pushd ${tmp_dir}/${package}/${workdir}
-                check_yarn_vulnerabilities $package $local_lockfile $workdir &
-            popd
-        fi
+	trace "${package} : Building tarball from ${packagesrc}"
+	if [ -f "${packagesrc}/${workdir:+$workdir/}yarn.lock" ]
+	then
+		pkgroot="${YARNPATH}/src/$(basename "${packagesrc}")"
+		mkdir -p "${pkgroot}"
+		mkdir -p "${YARNPATH}/cache"
+		cp -rp "${packagesrc}" "${pkgroot}/../"
+		(
+			cd "${pkgroot}/${workdir}"
+			trace "${package} : Pulling yarn deps in $(pwd)"
+			yarn --no-progress --emoji false --ignore-scripts --network-timeout 300000 || fatal "${package} : yarn failed"
 
-        pushd ./${workdir}
-            for i in 1 2 3 ; do
-                yarn --cache-folder ${yarn_cache_path} --no-progress --emoji false --silent --ignore-scripts --network-timeout 300000 && break
-                sleep 5
-            done
-        popd
-    elif [[ -f ${workdir:+$workdir/}Gopkg.toml ]]; then
-        local GOPATH=${tmp_dir}/go/${package}
-        export GOPATH=${GOPATH}
+			trace "${package} : Auditing with Yarn"
+			# Yarn audit returns failure if any issue are found, so just check the report file is created
+			yarn audit --json > "${auditto}/${package}.json" || true
+		       	[ -s "${auditto}/${package}.json" ] || fatal "${package} : yarn audit failed"
+		)
+	elif [ -f "${packagesrc}/${workdir:+$workdir/}Gopkg.toml" ]
+	then
+		pkgroot="${GOPATH}/src/$(basename "${packagesrc}")"
+		mkdir -p "${pkgroot}"
+		cp -rp "${packagesrc}" "${pkgroot}/../"
+		(
+			cd "${pkgroot}/${workdir}"
+			# TODO: vuln scanning
+			trace "${package} : Pulling go deps in $(pwd)"
+			GO111MODULE=off dep ensure || fatal "${package} : dep ensure failed"
+			trace "${package} : Auditing go packages"
+			GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json ${NANCY_CACHE:+-d "${NANCY_CACHE}"} > "${auditto}/${package}.json" || warn "${package} : Audit error"
+		)
+	elif [ -f "${packagesrc}/${workdir:+$workdir/}go.mod" ]
+	then
+		pkgroot="${GOPATH}/src/$(basename "${packagesrc}")"
+		mkdir -p "${pkgroot}"
+		cp -rp "${packagesrc}" "${pkgroot}/../"
+		(
+			cd "${pkgroot}/${workdir}"
+			trace "${package} : Pulling go modules in $(pwd)"
+			(GO111MODULE=on go mod tidy && GO111MODULE=on go mod vendor ) || fatal "${package} : go mod failed"
+			trace "${package} : Auditing go modules"
+			GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json ${NANCY_CACHE:+-d "${NANCY_CACHE}"} > "${auditto}/${package}.json" || warn "${package} : Audit error"
+		)
+	elif [ -f "${packagesrc}/${workdir:+$workdir/}package.json" ]
+	then
+		pkgroot="${NPMPATH}/src/$(basename "${packagesrc}")"
+		mkdir -p "${pkgroot}"
+		cp -rp "${packagesrc}" "${pkgroot}/../"
+		(
+			cd "${pkgroot}/${workdir}"
+			trace "${package} : Pulling npm deps in $(pwd)"
+			npm install --python=python2 --no-audit --ignore-scripts || fatal "${package} : npm install failed"
 
-        package_src=$(git_url_to_import_path $(git remote get-url origin))
+			trace "${package} : Auditing npm package with yarn"
+			#yarn import
+			## Yarn audit returns failure if any issue are found, so just check the report file is created
+			#yarn audit --json > "${auditto}/${package}.json" || true
+		       	#[ -s "${auditto}/${package}.json" ] || fatal "${package} : yarn audit failed"
+			warn "${package} : Vulnarability audit not implemented"
+		)
+	else
+		warn "Don't know how to get dependencies for ${package} (src: ${packagesrc} workdir: ${workdir})"
+		pkgroot="${packagesrc}"
+	fi
 
-        if [[ $is_excluded -eq 0 ]] && [[ -f Gopkg.lock ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
-            cp -r ${current_dir} ${tmp_dir}/${package}
-            vulnerability_package_path=${tmp_dir}/${package}-go/src/${package_src}
-            mkdir -p $(dirname ${vulnerability_package_path})
-            ln -sfF ${tmp_dir}/${package} ${vulnerability_package_path}
-            pushd ${vulnerability_package_path}/${workdir}
-                check_dep_vulnerabilities $package $local_lockfile $workdir &
-            popd
-        fi
-
-        package_path=${GOPATH}/src/${package_src}
-        mkdir -p $(dirname ${package_path})
-        ln -sfF ${current_dir} ${package_path}
-        pushd ${package_path}/${workdir}
-            rm -rf ${GOPATH}/pkg/dep/sources vendor
-            for i in 1 2 3; do
-                GO111MODULE=off dep ensure && break
-                sleep 5
-            done
-        popd
-    elif [[ -f ${workdir:+$workdir/}go.mod ]]; then
-        if [[ $is_excluded -eq 0 ]] && [[ -f go.sum ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
-            cp -r ${current_dir} ${tmp_dir}/${package}
-            pushd ${tmp_dir}/${package}/${workdir}
-                check_mod_vulnerabilities $package $local_lockfile $workdir &
-            popd
-        fi
-
-        pushd ./${workdir}
-            for i in 1 2 3; do
-                GO111MODULE=on go mod tidy && GO111MODULE=on go mod vendor && break
-                sleep 5
-            done
-        popd
-    elif [[ -f ${workdir:+$workdir/}package.json ]]; then
-        export NG_CLI_ANALYTICS=ci # disable sharing anonymous usage data with angular
-
-        if [[ $is_excluded -eq 0 ]] && [[ -f package-lock.json ]] && ([[ -z "${ENV_DEV}" ]] || [[ ${ENV_DEV} -eq 0 ]]); then
-            cp -r ${current_dir} ${tmp_dir}/${package}
-            pushd ${tmp_dir}/${package}/${workdir}
-                check_npm_vulnerabilities $package $local_lockfile $workdir &
-            popd
-        fi
-        
-        pushd ./${workdir}
-            for i in 1 2 3; do
-                npm install --python=python2 --no-audit --silent --ignore-scripts && break
-                sleep 5
-            done
-        popd
-    fi
-
-    wait # wait for vulnerability processes
-    rm -rf ${tmp_dir}/${package} ${tmp_dir}/${package}-go ${tmp_dir}/go/${package} ${tmp_dir}/yarn/${package}*
+	trace "${package} : Creating tarball"
+	tar -czf "${RPMBUILDROOT}/SOURCES/${tarball}" -C "${pkgroot}/../" $(basename "${pkgroot}")
 }
 
-check_dep_vulnerabilities() {
-    set +o errexit
-    local package=$1
-    local local_lockfile=${2}
-    local workdir=$3
-    local GOPATH=${tmp_dir}/${package}-go
-    export GOPATH=${GOPATH}
-    mkdir -p ${GOPATH}
+# Unpack named tarball from rpmbuild/SOURCES, pull dependencies and repackage
+function process_3rdparty_tarball()
+{
+	package="${1}"
+	tarball="${2}"
+	packagelockfile="${3}"
+	actuallockfile="${4}"
 
-    if ! command -v nancy &> /dev/null; then
-        echo "Ignore checking vulnerabilities of ${package}, 'nancy' is required"
-        set -o errexit
-        return
-    fi
+	trace "${package} : Processing ${tarball}"
 
-    if [ ! -f Gopkg.lock ]; then
-        echo "Ignore checking vulnerabilities of ${package}, original Gopkg.lock file doesn't exist"
-        set -o errexit
-        return
-    fi
+	[ -r "${tarball}" ] || fatal "${package} : Cannot read tarball: ${tarball}"
 
-    mv -f Gopkg.lock Gopkg.lock.ori
-    rm -rf ${GOPATH}/pkg/dep/sources vendor
-    GO111MODULE=off dep ensure
-    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > ${tmp_dir}/${package}-dep-vulnerability-new
-    mv -f Gopkg.lock.ori Gopkg.lock
-    rm -rf vendor ${GOPATH}/pkg/dep/sources
-    GO111MODULE=off dep ensure
-    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > ${tmp_dir}/${package}-dep-vulnerability-ori
+	subdir=$(tar -tvzf "${tarball}" | grep '/' | head -1 | awk '{print $6}')
 
-    set +o xtrace
-    gen_go_vulnerabilities ${package} ${tmp_dir}/${package}-dep-vulnerability-ori ${tmp_dir}/${package}-dep-vulnerability-new
-    set -o xtrace
+	[ -n "${subdir}" ] || fatal "${package} : Could not identify subdir in ${tarball}"
 
-    # generate fixed-vulnerabilities list doc
-    mv -f Gopkg.lock Gopkg.lock.ori
-    if [ -n "${local_lockfile}" ]; then
-        mv ${local_lockfile} Gopkg.lock
-    elif [[ -d .git ]] || [[ -f .git ]]; then
-        git show pmm-1.x:${workdir:+$workdir/}Gopkg.lock > ./Gopkg.lock
-        git show pmm-1.x:${workdir:+$workdir/}Gopkg.toml > ./Gopkg.toml
-    else
-        set -o errexit
-        return
-    fi
-    rm -rf vendor ${GOPATH}/pkg/dep/sources
-    GO111MODULE=off dep ensure
-    GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json > ${tmp_dir}/${package}-dep-vulnerability-pmm
+	mkdir -p "${tmp_dir}/tar"
 
-    set +o xtrace
-    gen_go_vulnerabilities ${package} ${tmp_dir}/${package}-dep-vulnerability-ori ${tmp_dir}/${package}-dep-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-go.json
-    gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-go.json
-    set -o xtrace
+	tar -C "${tmp_dir}/tar" -xzf "${tarball}"
 
-    set -o errexit
+	# If an alternative package lock file has been specified, copy it into place over the tarball supplied one
+	if [ -n "${packagelockfile}" ]
+	then
+		[ -e "${RPMBUILDROOT}/SOURCES/${packagelockfile}" ] || fatal "${package} : Could not find package lock file (${packagelockfile})"
+		[ -n "${actuallockfile}" ] || fatal "${package} : No lock file specified"
+
+		cp "${RPMBUILDROOT}/SOURCES/${packagelockfile}" "${tmp_dir}/tar/${subdir}/${actuallockfile}"
+	fi
+
+	tarname=$(basename "${tarball}")
+	version=$(echo "${tarname}" | sed "s/^${package}-\(.*\).tar.gz/\1/" )
+	if [ "${version}" = "${tarname}" ]
+	then
+		version=""
+	fi
+
+	build_generic_tarball "${package}" "${tmp_dir}/tar/${subdir}" "${version}"
 }
 
-check_mod_vulnerabilities() {
-    set +o errexit
-    local package=$1
-    local local_lockfile=$2
-    local workdir=$3
+# assemble_* functions put the spec file and sources in place for rpmbuild
+# Assemble sources from package brought in via git submodule
+function assemble_gitsubmodule()
+{
+	package="${1}"
+	trace "${package} : Assembling git submodule"
 
-    if ! command -v nancy &> /dev/null; then
-        echo "Ignore checking vulnerabilities of ${package}, 'nancy' is required"
-        set -o errexit
-        return
-    fi
+	(
+		cd "${submodule_dir}/${package}"
+		[ -f "${package}.spec" ] || fatal "${package} : No spec file found for ${package}"
 
-    if [ ! -f go.sum ]; then
-        echo "Ignore checking vulnerabilities of ${package}, original go.sum file doesn't exist"
-        set -o errexit
-        return
-    fi
+		version=$(git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1 | sed 's/^v//')
+		[ -n "${version}" ] || fatal "${package} : Failed to find version for package ${package}"
 
-    mv -f go.sum go.sum.ori
-    GO111MODULE=on go mod tidy
-    GO111MODULE=on go mod vendor
-    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-new
-    mv -f go.sum.ori go.sum
-    rm -rf vendor
-    GO111MODULE=on go mod tidy
-    GO111MODULE=on go mod vendor
-    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-ori
+		sed "s/%{_version}/${version}/g" "${package}.spec" > "${RPMBUILDROOT}/SPECS/${package}.spec"
 
-    set +o xtrace
-    gen_go_vulnerabilities ${package} ${tmp_dir}/${package}-mod-vulnerability-ori ${tmp_dir}/${package}-mod-vulnerability-new
-    set -o xtrace
+		# Get exterrnal dependencies
+		trace "${package} : Downloading external sources"
+		spectool -C "${tmp_dir}/rpmbuild/SOURCES/" -g "${tmp_dir}/rpmbuild/SPECS/${package}.spec"
 
-    # generate fixed-vulnerabilities list doc
-    mv -f go.sum go.sum.ori
-    if [ -n "${local_lockfile}" ]; then
-        mv ${local_lockfile} go.sum
-    elif [[ -d .git ]] || [[ -f .git ]]; then
-        git show pmm-1.x:${workdir:+$workdir/}go.sum > ./go.sum
-        git show pmm-1.x:${workdir:+$workdir/}go.mod > ./go.mod
-    else
-        set -o errexit
-        return
-    fi
-    rm -rf vendor
-    GO111MODULE=on go mod tidy
-    GO111MODULE=on go mod vendor
-    GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json > ${tmp_dir}/${package}-mod-vulnerability-pmm
-
-    set +o xtrace
-    gen_go_vulnerabilities ${package} ${tmp_dir}/${package}-mod-vulnerability-ori ${tmp_dir}/${package}-mod-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-go.json
-    gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-go.json
-    set -o xtrace
-
-    set -o errexit
+		# Choose assembly method per package
+		case "${package}" in
+			ssm-client) fatal "Fix ssm-client" ;;		#TODO
+			ssm-dashboards) build_generic_tarball "${package}" "${submodule_dir}/${package}" "${version}" "pmm-app" ;;
+			ssm-server) build_generic_tarball "${package}" "${submodule_dir}/${package}" "${version}" "password-page" ;;
+			*) build_generic_tarball "${package}" "${submodule_dir}/${package}" "${version}" ;;
+		esac
+	)
 }
 
-check_npm_vulnerabilities() {
-    set +o errexit
-    local package=$1
-    local local_lockfile=$2
-    local workdir=$3
-    local yarn_cache_path=${tmp_dir}/yarn/${package}-vulnerability-cache
-    mkdir -p ${yarn_cache_path}
+# Assemble sources from package brought in just as spec files
+function assemble_3rdparty()
+{
+	package="${1}"
+	srcpackage="${1}"
 
-    if [ ! -f package-lock.json ]; then
-        echo "Ignore checking vulnerabilities of ${package}, original package-lock.json file not exists"
-        set -o errexit
-        return
-    fi
+	# Select a different source tarball for certain packages
+	case "${package}" in
+		percona-toolkit-ssm-minimal) srcpackage=percona-toolkit ;;
+	esac
 
-    yarn import
-    yarn audit --json > ${tmp_dir}/${package}-npm-vulnerability-ori
-    rm -rf package-lock.json yarn.lock node_modules
-    npm install --package-lock-only
-    yarn import
-    yarn audit --json > ${tmp_dir}/${package}-npm-vulnerability-new
-    rm -rf yarn.lock node_modules
+	trace "${package} : Assembling 3rd party module"
 
-    set +o xtrace
-    gen_node_vulnerabilities ${package} ${tmp_dir}/${package}-npm-vulnerability-ori ${tmp_dir}/${package}-npm-vulnerability-new
-    set -o xtrace
+	(
+		cd "${submodule_dir}/${package}"
+		[ -f "${package}.spec" ] || fatal "${package} : No spec file found for ${package}"
 
-    # generate fixed-vulnerabilities list doc
-    if [ -n "${local_lockfile}" ]; then
-        mv ${local_lockfile} package-lock.json
-    elif [[ -d .git ]] || [[ -f .git ]]; then
-        git show pmm-1.x:${workdir:+$workdir/}package-lock.json > ./package-lock.json
-        git show pmm-1.x:${workdir:+$workdir/}package.json > ./package.json
-    else
-        set -o errexit
-        return
-    fi
+		cp -ar * "${RPMBUILDROOT}/SOURCES/"
+		mv "${RPMBUILDROOT}/SOURCES/${package}.spec" "${RPMBUILDROOT}/SPECS/${package}.spec"
 
-    yarn import
-    yarn audit --json > ${tmp_dir}/${package}-npm-vulnerability-pmm
+		# Get exterrnal dependencies
+		trace "${package} : Downloading external sources"
+		spectool -C "${tmp_dir}/rpmbuild/SOURCES/" -g "${tmp_dir}/rpmbuild/SPECS/${package}.spec"
 
-    set +o xtrace
-    gen_node_vulnerabilities ${package} ${tmp_dir}/${package}-npm-vulnerability-ori ${tmp_dir}/${package}-npm-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-node.json
-    gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-node.json
-    set -o xtrace
+		tarball=$(find "${tmp_dir}/rpmbuild/SOURCES/" -maxdepth 1 -type f -iname "${srcpackage}*.tar.gz" | head -1)
 
-    set -o errexit
+		[ -n "${tarball}" ] || fatal "${package} : Could not find source tarball for ${srcpackage}"
+
+		
+		case "${package}" in
+			grafana)
+				process_3rdparty_tarball "${package}" "${tarball}" "grafana-yarn.lock" "yarn.lock" ;
+				sasstarball=$(find "${tmp_dir}/rpmbuild/SOURCES/" -maxdepth 1 -type f -iname "node-sass-*.tar.gz" | head -1) ;
+				process_3rdparty_tarball "node-sass" "${sasstarball}" "node-sass-package-lock.json" "package-lock.json" ;;
+			*) process_3rdparty_tarball "${package}" "${tarball}" ;;
+		esac
+	)
 }
 
-check_yarn_vulnerabilities() {
-    set +o errexit
-    local package=$1
-    local local_lockfile=$2
-    local workdir=$3
-    local yarn_cache_path=${tmp_dir}/yarn/${package}-vulnerability-cache
-    mkdir -p ${yarn_cache_path}
+# Create the SRPM for a given package name
+function create_srpm()
+{
+	package="${1}"
 
-    if [ ! -f yarn.lock ]; then
-        echo "Ignore checking vulnerabilities of ${package}, original yarn.lock file not exists"
-        set -o errexit
-        return
-    fi
+	(
+		rm -rf ${tmp_dir}/rpmbuild/SRPMS/${package}*
+		rm -rf ${tmp_dir}/rpmbuild/SOURCES/${package}*
+		rm -f ${srpm_dir}/${package}*.src.rpm
 
-    yarn audit --json > ${tmp_dir}/${package}-yarn-vulnerability-ori
-    rm -rf yarn.lock node_modules
-    yarn --cache-folder ${yarn_cache_path}
-    yarn audit --json > ${tmp_dir}/${package}-yarn-vulnerability-new
-    rm -rf yarn.lock node_modules
+		if [ -r "${submodule_dir}/${package}/.git" ]
+		then
+			assemble_gitsubmodule "${package}"
+		else
+			assemble_3rdparty "${package}"
+		fi
 
-    set +o xtrace
-    gen_node_vulnerabilities ${package} ${tmp_dir}/${package}-yarn-vulnerability-ori ${tmp_dir}/${package}-yarn-vulnerability-new
-    set -o xtrace
-
-    # generate fixed-vulnerabilities list doc
-    if [ -n "${local_lockfile}" ]; then
-        mv -f ${local_lockfile} yarn.lock
-    elif [[ -d .git ]] || [[ -f .git ]]; then
-        git show pmm-1.x:${workdir:+$workdir/}yarn.lock > ./yarn.lock
-        git show pmm-1.x:${workdir:+$workdir/}package.json > ./package.json
-    else
-        set -o errexit
-        return
-    fi
-
-    yarn audit --json > ${tmp_dir}/${package}-yarn-vulnerability-pmm
-
-    set +o xtrace
-    gen_node_vulnerabilities ${package} ${tmp_dir}/${package}-yarn-vulnerability-ori ${tmp_dir}/${package}-yarn-vulnerability-pmm ${logs_dir}/fixed-vulnerabilities/${package}-node.json
-    gen_fixed_vulnerabilities_md ${package} ${logs_dir}/fixed-vulnerabilities/${package}-node.json
-    set -o xtrace
-
-    set -o errexit
+		trace "${package} : Building SRPM"
+		rpmbuild -bs --define "debug_package %{nil}" --define "_topdir ${RPMBUILDROOT}" "${RPMBUILDROOT}/SPECS/${package}.spec"
+		mv ${tmp_dir}/rpmbuild/SRPMS/${package}*.src.rpm ${srpm_dir}
+	) | tee >(
+		if (grep ': WARN :' > /dev/null)
+		then
+			trace "${package} : SRPM Built with warnings"
+		else
+			if [ compgen -G "${srpm_dir}/${package}*.src.rpm" > /dev/null ]
+			then
+				trace "${package} : SRPM Built"
+			else
+				trace "${package} : SRPM FAILED TO BUILD"
+			fi
+		fi
+	)
 }
 
-gen_go_vulnerabilities() {
-    local package=$1
-    local ori_file=$2
-    local new_file=$3
-    local dest_file=${4:-"${logs_dir}/vulnerability-diffs/${package}-go.json"}
-    local old_vulnerability_ids=()
-    local result_vulnerability_ids=()
+##############################################################################
 
-    echo $'[\n]' > "${dest_file}"
+function main()
+{
+	local package=
 
-    i=0
-    vulnerable_length=$(cat "${ori_file}" | jq ".vulnerable | length")
-    while [ $i -lt ${vulnerable_length} ]; do
-        vulnerable=$(cat "${ori_file}" | jq ".vulnerable[${i}]")
-        if [ -z "$vulnerable" ] || [ "$vulnerable" = "null" ]; then
-            i=$((i+1))
-            continue
-        fi
+	check_commands
 
-        j=0
-        vulnerability_length=$(echo "${vulnerable}" | jq ".Vulnerabilities | length")
-        while [ $j -lt $vulnerability_length ]; do
-            vulnerability=$(echo "${vulnerable}" | jq ".Vulnerabilities[${j}]")
-            if [ -z "$vulnerability" ] || [ "$vulnerability" = "null" ]; then
-                j=$((j+1))
-                continue
-            fi
+	for arg in "$@"
+	do
+		val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
+		case "$arg" in
+			--help)		usage ;;
+			-*)		usage ;;
+			*)		package="$val" ;;
+		esac
+	done
 
-            match_id=$(echo "${vulnerability}" | jq ".ID")
-            old_vulnerability_ids+=($match_id)
+	if [ -z "$package" ]; then
+		usage
+	fi
 
-            j=$((j+1))
-        done
+	[ "${package}" = "all" ] || (echo "${packages[@]}" | sed 's/ /\n/g' | grep -xF "${package}" > /dev/null 2>&1) || fatal "${package} : Package ${package} unknown"
 
-        i=$((i+1))
-    done
+	setup
 
-    i=0
-    vulnerable_length=$(cat "${new_file}" | jq ".vulnerable | length")
-    while [ $i -lt ${vulnerable_length} ]; do
-        vulnerable=$(cat "${new_file}" | jq ".vulnerable[${i}]")
-        if [ -z "$vulnerable" ] || [ "$vulnerable" = "null" ]; then
-            i=$((i+1))
-            continue
-        fi
+	if [ "${package}" == "all" ]; then
+		for package in "${packages[@]}"
+		do
+			create_srpm "$package" |& tee "${buildlog_dir}/${package}.log"
+		done
+	else
+		create_srpm "$package" |& tee "${buildlog_dir}/${package}.log"
+	fi
 
-        path=$(echo "${vulnerable}" | jq ".Coordinates")
-        if [ -z "$path" ]; then
-            i=$((i+1))
-            continue
-        fi
-
-        j=0
-        vulnerability_length=$(echo "${vulnerable}" | jq ".Vulnerabilities | length")
-        while [ $j -lt $vulnerability_length ]; do
-            vulnerability=$(echo "${vulnerable}" | jq ".Vulnerabilities[${j}]")
-            if [ -z "$vulnerability" ] || [ "$vulnerability" = "null" ]; then
-                j=$((j+1))
-                continue
-            fi
-
-            id=$(echo "${vulnerability}" | jq ".ID")
-            if [ -z "$id" ]; then
-                j=$((j+1))
-                continue
-            fi
-
-            if [[ " ${old_vulnerability_ids[*]} " == *" ${id} "* ]] || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
-                j=$((j+1))
-                continue
-            fi
-
-            title=$(echo "${vulnerability}" | jq ".Title")
-            desc=$(echo "${vulnerability}" | jq ".Description")
-            ref=$(echo "${vulnerability}" | jq ".Reference")
-            if [ -z "$title" ] || [ -z "$desc" ] || [ -z "$ref" ]; then
-                j=$((j+1))
-                continue
-            fi
-
-            result_vulnerability_ids+=(${id})
-
-            # check if cvss_score is a vaild positive number
-            cvss_score=$(echo "${vulnerability}" | jq -r ".CvssScore") # it's string value, use -r to get raw decimal value between quotes
-            re='^[0-9]+([.][0-9]+)?$'
-            if ! [[ $cvss_score =~ $re ]] ; then
-                cvss_score=0
-            fi
-
-            insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${dest_file}"
-            j=$((j+1))
-        done
-
-        i=$((i+1))
-    done
-}
-
-gen_node_vulnerabilities() {
-    local package=$1
-    local ori_file=$2
-    local new_file=$3
-    local dest_file=${4:-"${logs_dir}/vulnerability-diffs/${package}-node.json"}
-    local old_vulnerability_ids=()
-    local result_vulnerability_ids=()
-
-    echo $'[\n]' > "${dest_file}"
-
-    while read -r line; do
-        type=$(echo "${line}" | jq -r ".type")
-        if [ -z "$type" ] || [ "$type" = "null" ] || [ "$type" != "auditAdvisory" ]; then
-            continue
-        fi
-
-        match_id=$(echo "${line}" | jq ".data.advisory.id")
-        old_vulnerability_ids+=($match_id)
-    done < "$ori_file"
-
-    while read -r line; do
-        type=$(echo "${line}" | jq -r ".type")
-        if [ -z "$type" ] || [ "$type" = "null" ] || [ "$type" != "auditAdvisory" ]; then
-            continue
-        fi
-
-        id=$(echo "${line}" | jq ".data.advisory.id")
-        if [ -z "$id" ]; then
-            continue
-        fi
-
-        if [[ " ${old_vulnerability_ids[*]} " == *" ${id} "* ]] || [[ " ${result_vulnerability_ids[*]} " == *" ${id} "* ]]; then
-            continue
-        fi
-
-        path=$(echo "${line}" | jq ".data.resolution.path")
-        title=$(echo "${line}" | jq ".data.advisory.title")
-        desc=$(echo "${line}" | jq ".data.advisory.overview")
-        ref=$(echo "${line}" | jq ".data.advisory.url")
-        if [ -z "$path" ] || [ -z "$title" ] || [ -z "$desc" ] || [ -z "$ref" ]; then
-            continue
-        fi
-
-        result_vulnerability_ids+=(${id})
-
-        cvss_score=$(echo "${line}" | jq ".data.advisory.cvss.score")
-        re='^[0-9]+([.][0-9]+)?$'
-        if ! [[ $cvss_score =~ $re ]] ; then
-            cvss_score=0
-        fi
-
-        insert_into_vulnerability "${id}" "${path}" "${title}" "${desc}" "${cvss_score}" "${ref}" "${dest_file}"
-    done < "$new_file"
-}
-
-insert_into_vulnerability() {
-    local id=$1
-    local path=$2
-    local title=$3
-    local desc=$4
-    local cvss_score=$5
-    local ref=$6
-    local file=$7
-
-    if [ "$(head -c3 ${file})" = $'[\n]' ]; then
-        sed -i "2 i\ \t{\n\t\t\"id\": $(printf "%q" "${id}"),\n\t\t\"path\": $(printf "%q" "${path}"),\n\t\t\"title\": $(printf "%q" "${title}"),\n\t\t\"desc\": $(printf "%q" "${desc}"),\n\t\t\"cvss_score\": $(printf "%q" "${cvss_score}"),\n\t\t\"ref\": $(printf "%q" "${ref}")\n\t}" "${file}"
-    else
-        sed -i "2 i\ \t{\n\t\t\"id\": $(printf "%q" "${id}"),\n\t\t\"path\": $(printf "%q" "${path}"),\n\t\t\"title\": $(printf "%q" "${title}"),\n\t\t\"desc\": $(printf "%q" "${desc}"),\n\t\t\"cvss_score\": $(printf "%q" "${cvss_score}"),\n\t\t\"ref\": $(printf "%q" "${ref}")\n\t}," "${file}"
-    fi
-}
-
-gen_fixed_vulnerabilities_md() {
-    local package=$1
-    local file=$2
-
-    mkdir -p ${docs_dir}/fixed-vulnerabilities
-    content=$'| id | path | title | desc | cvss | ref |\n| --- | --- | --- | --- | --- | --- |'
-
-    i=0
-    vulnerability_length=$(cat "${file}" | jq ". | length")
-    while [ $i -lt ${vulnerability_length} ]; do
-        vulnerability=$(cat "${file}" | jq ".[${i}]")
-
-        id=$(echo "${vulnerability}" | jq -r ".id")
-        path=$(echo "${vulnerability}" | jq -r ".path")
-        title=$(echo "${vulnerability}" | jq -r ".title")
-        desc=$(echo "${vulnerability}" | jq -r ".desc")
-        cvss_score=$(echo "${vulnerability}" | jq ".cvss_score")
-        ref=$(echo "${vulnerability}" | jq -r ".ref")
-
-        row=$(printf "| %s | %s | %s | %s | %q | %s |" "${id//$'\n'/<br />}" "${path//$'\n'/<br />}" "${title//$'\n'/<br />}" "${desc//$'\n'/<br />}" ${cvss_score} "${ref//$'\n'/<br />}")
-        content="${content}"$'\n'"${row}"
-        i=$((i+1))
-    done
-
-    echo "${content}" > ${docs_dir}/fixed-vulnerabilities/${package}.md
-}
-
-create_srpm() {
-    local package=$1
-    local upstream_package=$2
-    local version=
-
-    rm -rf ${tmp_dir}/rpmbuild/SRPMS/${package}*
-    rm -rf ${tmp_dir}/rpmbuild/SOURCES/${package}*
-    if [ -n "${upstream_package}" ]; then
-        rm -rf ${tmp_dir}/rpmbuild/SOURCES/${upstream_package}*
-    fi
-    mkdir -vp ${tmp_dir}/rpmbuild/{SOURCES,SPECS,BUILD,SRPMS,RPMS}
-
-    pushd ${submodule_dir}/$package
-        if [[ -d .git ]] || [[ -f .git ]]; then
-            version=$(git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1)
-        else
-            cp -ar * ${tmp_dir}/rpmbuild/SOURCES/
-            rm -f ${tmp_dir}/rpmbuild/SOURCES/${package}.spec
-        fi
-    popd
-
-    copy_specs $package $version
-    srpm_filename="$(rpmspec -q --qf %{name}-%{version}-%{release} ${tmp_dir}/rpmbuild/SPECS/${package}.spec).src.rpm"
-    if [ -f "${srpm_dir}/${srpm_filename}" ]; then
-        echo "${srpm_filename} exists, skipped"
-        return
-    fi
-
-    spectool -C ${tmp_dir}/rpmbuild/SOURCES/ -g ${tmp_dir}/rpmbuild/SPECS/${package}.spec
-
-    if [ -n "${version}" ]; then
-        if [ "$package" == "ssm-client" ]; then
-            build_ssm_client_tarball $package $version
-        elif [ "$package" == "ssm-dashboards" ]; then
-            build_generic_tarball $package $version "pmm-app"
-        elif [ "$package" == "ssm-server" ]; then
-            build_generic_tarball $package $version "password-page"
-        else
-            build_generic_tarball $package $version
-        fi
-    else
-        if [ "$package" == "grafana" ]; then
-            build_3rd_tallbar $package "grafana-yarn.lock" "yarn.lock"
-            build_3rd_tallbar "node-sass" "node-sass-package-lock.json" "package-lock.json"
-        elif [ -n "${upstream_package}" ]; then
-            build_3rd_tallbar "${upstream_package}"
-        else
-            build_3rd_tallbar $package
-        fi
-    fi
-
-    build_srpm $package $version
-}
-
-check_commands() {
-    if ! command -v git &> /dev/null; then
-        echo "'git' is required to run this script"
-        exit 1
-    fi
-
-    if ! command -v rpmbuild &> /dev/null; then
-        echo "'rpmbuild' is required to run this script"
-        exit 1
-    fi
-
-    if ! command -v spectool &> /dev/null; then
-        echo "'spectool' is required to run this script"
-        exit 1
-    fi
-
-    if ! command -v go &> /dev/null; then
-        echo "'go' is required to run this script"
-        exit 1
-    fi
-
-    if ! command -v dep &> /dev/null; then
-        echo "'dep' is required to run this script"
-        exit 1
-    fi
-
-    if ! command -v npm &> /dev/null; then
-        echo "'npm' is required to run this script"
-        exit 1
-    fi
-
-    if ! command -v yarn &> /dev/null; then
-        echo "'yarn' is required to run this script"
-        exit 1
-    fi
-}
-
-git_url_to_import_path() {
-    proto="$(echo $1 | grep :// | sed -e's,^\(.*://\).*,\1,g')"
-    url="$(echo ${1/$proto/})"
-    user="$(echo $url | grep @ | cut -d@ -f1)"
-    host="$(echo ${url/$user@/} | cut -d/ -f1 | sed 's/:/\//g')"
-    path="$(echo $url | grep / | cut -d/ -f2-)"
-
-    echo "${host}/${path%'.git'}"
-}
-
-main() {
-    local package=
-
-    check_commands
-
-    for arg do
-        val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
-        case "$arg" in
-            --help)         usage ;;
-            -*)             usage ;;
-            *)              package="$val" ;;
-        esac
-    done
-
-    if [ -z "$package" ]; then
-        usage
-    fi
-
-    if [ "${package}" == "percona-toolkit-ssm-minimal" ]; then
-        create_srpm "$package" "percona-toolkit"
-    else
-        create_srpm "$package"
-    fi
+	trace "$(basename "${0}") : Done"
 }
 
 main $@
