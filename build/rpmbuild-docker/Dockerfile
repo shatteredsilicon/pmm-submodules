@@ -52,6 +52,8 @@ RUN mkdir -p "${NANCY_CACHE}"
 RUN mkdir -p "${YARN_CACHE_FOLDER}"
 RUN chown -R builder:builder /mnt/cache
 
+RUN mkdir /mnt/tmp && chown -R builder:builder /mnt/tmp
+
 VOLUME /mnt/cache
 
 USER builder
