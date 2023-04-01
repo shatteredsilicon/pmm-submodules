@@ -86,7 +86,19 @@ main() {
         usage
     fi
 
-    create_rpm $package
+    if [ "${package}" = "all" ]
+    then
+		for package in "${packages[@]}"
+		do
+			# TODO: Remove exception when package builds
+			if [ "${package}" != "ssm-qan-app" ]
+			then
+				create_rpm "$package" |& tee "${buildlog_dir}/${package}.rpm.log"
+			fi
+		done
+    else
+	    create_rpm $package |& tee "${buildlog_dir}/${package}.rpm.log"
+    fi
 }
 
 main $@
