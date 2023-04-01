@@ -217,7 +217,7 @@ pull_dep_in_place() {
         
         pushd ./${workdir}
             for i in 1 2 3; do
-                npm install --python=python2 --no-audit --silent --ignore-scripts && break
+                npm install --python=python2 --no-audit --silent --ignore-scripts --legacy-peer-deps && break
                 sleep 5
             done
         popd
