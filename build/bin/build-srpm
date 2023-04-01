@@ -108,12 +108,12 @@ function build_generic_tarball()
 	version="${3}"
 	workdir="${4}"
 
-	tarball="${package}${version:+-${version}}.tar.gz"
+	tarball="${5:-${package}${version:+-${version}}.tar.gz}"
 
 
 	pkgroot=""
 
-	trace "${package} : Building tarball from ${packagesrc}"
+	trace "${package} : Building tarball from ${packagesrc} into ${tarball}"
 	if [ -f "${packagesrc}/${workdir:+$workdir/}yarn.lock" ]
 	then
 		pkgroot="${YARNPATH}/src/$(basename "${packagesrc}")"
@@ -139,7 +139,7 @@ function build_generic_tarball()
 			cd "${pkgroot}/${workdir}"
 			rm -rf vendor	# Remove the vendor directory as some packages (eg alecthomas/kingpin.v2) fail on a second build attempt
 			trace "${package} : Pulling go deps in $(pwd)"
-			GO111MODULE=off dep ensure || fatal "${package} : dep ensure failed"
+			GO111MODULE=off dep ensure -vendor-only -v || fatal "${package} : dep ensure failed"
 			trace "${package} : Auditing go packages"
 			GO111MODULE=off go list -json -deps ./... | nancy sleuth -p Gopkg.lock -o json ${NANCY_CACHE:+-d "${NANCY_CACHE}"} > "${auditto}/${package}.json" || warn "${package} : Audit error"
 		)
@@ -163,7 +163,7 @@ function build_generic_tarball()
 		(
 			cd "${pkgroot}/${workdir}"
 			trace "${package} : Pulling npm deps in $(pwd)"
-			npm install --python=python2 --no-audit --ignore-scripts || fatal "${package} : npm install failed"
+			npm install --python=python2 --no-audit --ignore-scripts --legacy-peer-deps || fatal "${package} : npm install failed"
 
 			trace "${package} : Auditing npm package with yarn"
 			#yarn import
@@ -177,7 +177,7 @@ function build_generic_tarball()
 		pkgroot="${packagesrc}"
 	fi
 
-	trace "${package} : Creating tarball"
+	trace "${package} : Creating tarball from ${pkgroot}"
 	tar -czf "${RPMBUILDROOT}/SOURCES/${tarball}" -C "${pkgroot}/../" $(basename "${pkgroot}")
 }
 
@@ -217,7 +217,7 @@ function process_3rdparty_tarball()
 		version=""
 	fi
 
-	build_generic_tarball "${package}" "${tmp_dir}/tar/${subdir}" "${version}"
+	build_generic_tarball "${package}" "${tmp_dir}/tar/${subdir}" "${version}" "" "$(basename "${tarball}")"
 }
 
 # assemble_* functions put the spec file and sources in place for rpmbuild
