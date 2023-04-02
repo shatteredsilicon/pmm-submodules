@@ -10,7 +10,7 @@ PACKAGES=("${packages[@]}")
 
 usage () {
     cat <<EOF
-Usage: $0 [OPTIONS] [PACKAGES]
+Usage: $0 [OPTIONS] [PACKAGE]
 
     The following options may be given:
         --help) usage ;;
@@ -18,7 +18,7 @@ Usage: $0 [OPTIONS] [PACKAGES]
     The following packages may be given:
         ${packages[@]}
 
-Example $0 ssm-client ssm-dashboards
+Example $0 ssm-client
 EOF
         exit 1
 }
@@ -28,47 +28,19 @@ shell_quote_string() {
 }
 
 build_rpms() {
-    mkdir -vp ${result_dir} ${tmp_dir}
-
-    pids=()
-    for package in $(echo ${PACKAGES[@]}); do
-        local volume_name=ssm-8-${package}-mock-cache
-        docker volume create ${volume_name}
-        docker run --privileged -e ENV_DEV --rm -v ${volume_name}:/var/cache/mock -v ${root_dir}:/home/builder/ssm-submodules ${rpmbuild_docker_image} sh -c "
-            set -o errexit
-            set -o xtrace
-            umask 0000
-
-            /home/builder/ssm-submodules/build/bin/build-rpm ${package}
-        " & pids+=($!)
-    done
-    for pid in "${pids[@]}"; do
-        wait "${pid}"
-    done
+    docker run --rm --privileged -v ${root_dir}:/home/builder/ssm-submodules --mount 'type=volume,src=ssm-build-cache,dst=/mnt/cache' --tmpfs '/mnt/tmp:uid=1000,gid=1000' ${rpmbuild_docker_image} sh -c "
+    	/home/builder/ssm-submodules/build/bin/build-rpm ${1}
+    "
 }
 
 main() {
-    declare -a TMP_PACKAGES
+    PACKAGE="${1}"
 
-    for arg do
-        val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
-        case "$arg" in
-            --help)         usage ;;
-            -*)             usage ;;
-            *)              TMP_PACKAGES+=(`shell_quote_string "$arg"`) ;;
-        esac
-    done
-
-    if [ ${#TMP_PACKAGES[@]} -gt 0 ]; then
-        PACKAGES=("${TMP_PACKAGES[@]}")
-    fi
-
+    mkdir -vp ${result_dir} ${docs_dir} ${logs_dir} ${tmp_dir}
     if [[ -n "${WITHOUT_DOCKER}" ]] && [[ ${WITHOUT_DOCKER} -eq 1 ]]; then
-        for package in ${PACKAGES[@]}; do
-            ${bin_dir}/build-rpm ${package}
-        done
+            ${bin_dir}/build-rpm "${PACKAGE:-all}"
     else
-        build_rpms
+        build_rpms "${PACKAGE:-all}"
     fi
 }
 

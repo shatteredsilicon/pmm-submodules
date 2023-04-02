@@ -86,7 +86,15 @@ main() {
         usage
     fi
 
-    create_rpm $package
+    if [ "${package}" = "all" ]
+    then
+		for package in "${packages[@]}"
+		do
+			create_rpm "$package" |& tee "${buildlog_dir}/${package}.rpm.log"
+		done
+    else
+	    create_rpm $package |& tee "${buildlog_dir}/${package}.rpm.log"
+    fi
 }
 
 main $@

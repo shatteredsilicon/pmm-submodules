@@ -3,38 +3,31 @@ FROM almalinux:8.7-minimal
 RUN microdnf -y update && \
     microdnf -y install yum
 RUN yum -y install epel-release
-RUN dnf module enable -y nodejs:14
+RUN dnf module enable -y nodejs:18
 RUN yum -y --allowerasing install nodejs yum-utils rpmdevtools createrepo_c mock git golang \
         jq python2 make gcc-c++ rsync rkhunter coreutils
+
+RUN npm install -g npm@latest
 
 RUN useradd builder -u 1000 -m -G users,wheel,mock && \
     chmod 755 /home/builder
 RUN (rkhunter --update || true) && rkhunter --propupd
 
-RUN curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo | tee /etc/yum.repos.d/yarn.repo
-RUN yum -y install yarn
+#RUN curl --silent --location --output /etc/yum.repos.d/yarn.repo https://dl.yarnpkg.com/rpm/yarn.repo
+#RUN yum -y install yarn
 
-RUN echo $' \n\
-config_opts[\'dnf.conf\'] += """ \n\
-[phantomjs] \n\
-name = Repo for phantomjs \n\
-baseurl = https://ftp.redsleeve.org/pub/misc/phantomjs/$basearch/ \n\
-gpgcheck = 0 \n\
-enabled = 1 \n\
-""" \n\
-' > /etc/mock/templates/ssm-8.tpl
+RUN \
+	corepack enable &&\
+	corepack prepare yarn@stable --activate
 
-RUN echo $' \n\
-include(\'templates/rocky-8.tpl\') \n\
-include(\'templates/epel-8.tpl\') \n\
-include(\'templates/ssm-8.tpl\') \n\
-\n\
-config_opts[\'root\'] = \'ssm-8-'$(rpm --eval "%{_arch}")$'\' \n\
-config_opts[\'description\'] = \'SSM 8\' \n\
-config_opts[\'target_arch\'] = \''$(rpm --eval "%{_arch}")$'\' \n\
-config_opts[\'legal_host_arches\'] = [\''$(rpm --eval "%{_arch}")$'\'] \n\
-config_opts[\'module_enable\'] = [\'nodejs:14\'] \n\
-' > /etc/mock/ssm-8-$(rpm --eval "%{_arch}").cfg
+COPY ssm-8.tpl /etc/mock/templates/ssm-8.tpl
+
+COPY ssm-8.cfg /etc/mock/ssm-8-.cfg
+
+RUN \
+	ARCH="$(rpm --eval "%{_arch}")" &&\
+	sed "s/_ARCH_/${ARCH}/g" /etc/mock/ssm-8-.cfg > "/etc/mock/ssm-8-${ARCH}.cfg" &&\
+	rm /etc/mock/ssm-8-.cfg
 
 ENV GOPATH=/home/builder/go
 RUN mkdir -p ${GOPATH}/src/github.com/golang
@@ -44,6 +37,25 @@ RUN go install github.com/sonatype-nexus-community/nancy@latest
 RUN chown -R builder:builder /home/builder
 
 RUN rkhunter --propupd uname && rkhunter --check --disable system_configs_syslog --disable avail_modules --disable passwd_changes --disable group_changes
+
+#Configure build time caches
+ENV npm_config_cache=/mnt/cache/npm
+ENV GOCACHE=/mnt/cache/go
+ENV DEPCACHEDIR=/mnt/cache/dep
+ENV NANCY_CACHE=/mnt/cache/nancy
+ENV YARN_CACHE_FOLDER=/mnt/cache/yarn
+
+RUN mkdir -p "${npm_config_cache}"
+RUN mkdir -p "${GOCACHE}"
+RUN mkdir -p "${DEPCACHEDIR}"
+RUN mkdir -p "${NANCY_CACHE}"
+RUN mkdir -p "${YARN_CACHE_FOLDER}"
+RUN chown -R builder:builder /mnt/cache
+
+RUN mkdir -p /mnt/tmp/mock && chown -R builder:builder /mnt/tmp/mock
+
+VOLUME /mnt/cache
+VOLUME /mnt/tmp
 
 USER builder
 ENV FLAVOR=rpmbuild OS=rockylinux DIST=el8 PATH=$PATH:${GOPATH}/bin
