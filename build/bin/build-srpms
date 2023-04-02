@@ -10,7 +10,7 @@ PACKAGES=("${packages[@]}")
 
 usage () {
     cat <<EOF
-Usage: $0 [OPTIONS] [PACKAGES]
+Usage: $0 [OPTIONS] [PACKAGE]
 
     The following options may be given:
         --help) usage ;;
@@ -18,7 +18,7 @@ Usage: $0 [OPTIONS] [PACKAGES]
     The following packages may be given:
         ${packages[@]}
 
-Example $0 ssm-client ssm-dashboards
+Example $0 ssm-client
 EOF
         exit 1
 }
@@ -28,38 +28,19 @@ shell_quote_string() {
 }
 
 build_srpms() {
-    docker run --rm -e ENV_DEV -v ${root_dir}:/home/builder/ssm-submodules --mount 'type=volume,src=ssm-build-cache,dst=/mnt/cache' --tmpfs '/mnt/tmp:uid=1000,gid=1000' ${rpmbuild_docker_image} sh -c "
-    	/home/builder/ssm-submodules/build/bin/build-srpm all
+    docker run --rm -v ${root_dir}:/home/builder/ssm-submodules --mount 'type=volume,src=ssm-build-cache,dst=/mnt/cache' --tmpfs '/mnt/tmp:uid=1000,gid=1000' ${rpmbuild_docker_image} sh -c "
+    	/home/builder/ssm-submodules/build/bin/build-srpm ${1}
     "
 }
 
 main() {
-    declare -a TMP_PACKAGES
+    PACKAGE="${1}"
 
-    for arg do
-        val=`echo "$arg" | sed -e 's;^--[^=]*=;;'`
-        case "$arg" in
-            --help)         usage ;;
-            -*)             usage ;;
-            *)              TMP_PACKAGES+=(`shell_quote_string "$arg"`) ;;
-        esac
-    done
-
-    if [ ${#TMP_PACKAGES[@]} -gt 0 ]; then
-        PACKAGES=("${TMP_PACKAGES[@]}")
-    fi
-
+    mkdir -vp ${result_dir} ${docs_dir} ${logs_dir} ${tmp_dir}
     if [[ -n "${WITHOUT_DOCKER}" ]] && [[ ${WITHOUT_DOCKER} -eq 1 ]]; then
-        local pids=()
-        for package in ${PACKAGES[@]}; do
-            ${bin_dir}/build-srpm ${package} & pids+=($!)
-        done
-        for pid in "${pids[@]}"; do
-            wait "${pid}"
-        done
+            ${bin_dir}/build-srpm "${PACKAGE:-all}"
     else
-        mkdir -vp ${result_dir} ${docs_dir} ${logs_dir} ${tmp_dir}
-        build_srpms
+        build_srpms "${PACKAGE:-all}"
     fi
 }
 
