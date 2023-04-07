@@ -36,10 +36,11 @@ build_rpms() {
 main() {
     PACKAGE="${1}"
 
-    mkdir -vp ${result_dir} ${docs_dir} ${logs_dir} ${tmp_dir}
+    mkdir -vp ${result_dir} ${docs_dir} ${logs_dir}
     if [[ -n "${WITHOUT_DOCKER}" ]] && [[ ${WITHOUT_DOCKER} -eq 1 ]]; then
             ${bin_dir}/build-rpm "${PACKAGE:-all}"
     else
+	find ${result_dir} ${docs_dir} ${logs_dir} -type d -exec chmod 777 \{\} \;
         build_rpms "${PACKAGE:-all}"
     fi
 }
