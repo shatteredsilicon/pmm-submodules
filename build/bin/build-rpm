@@ -86,6 +86,8 @@ main() {
         usage
     fi
 
+    mkdir -p "${buildlog_dir}"
+   
     if [ "${package}" = "all" ]
     then
 		for package in "${packages[@]}"
