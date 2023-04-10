@@ -224,6 +224,7 @@ main() {
         esac
     done
 
+    mkdir -vp "${tmp_dir}"
     VERSION=${VERSION:-$(cd ${root_dir}; git tag -l --sort=-version:refname "v*" --merged | head -n 1)}
     build
 }
