@@ -87,6 +87,7 @@ main() {
     fi
 
     mkdir -p "${buildlog_dir}"
+    mkdir -p "${tmp_dir}"
    
     if [ "${package}" = "all" ]
     then

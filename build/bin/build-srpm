@@ -72,14 +72,14 @@ function check_commands()
 # Perform general setup, creating directories and such
 function setup()
 {
-	[ -n "${tmp_dir}" -a -d "${tmp_dir}" ] || fatal "Error: tmp_dir (${tmp_dir}) not a directory"
-	mkdir -vp "${RPMBUILDROOT}"{SOURCES,SPECS,BUILD,SRPMS,RPMS}
-	mkdir -vp "${GOPATH}/"{src,pkg}
-	mkdir -vp "${NPMPATH}/src"
-	mkdir -vp "${YARNPATH}/src"
+	mkdir -vp "${tmp_dir}" || fatal "Error: Failed to create tmp_dir"
+	mkdir -vp "${RPMBUILDROOT}"{SOURCES,SPECS,BUILD,SRPMS,RPMS} || fatal "Error: Failed to create buildroot"
+	mkdir -vp "${GOPATH}/"{src,pkg} || fatal "Error: Failed to create go path"
+	mkdir -vp "${NPMPATH}/src" || fatal "Error: Failed to create npm path"
+	mkdir -vp "${YARNPATH}/src" || fatal "Error: Failed to create yarn path"
 
-	mkdir -vp "${buildlog_dir}"
-	mkdir -vp "${srpm_dir}"
+	mkdir -vp "${buildlog_dir}" || fatal "Error: Failed to create buildlog dir"
+	mkdir -vp "${srpm_dir}" || fatal "Error: Failed to create srpm dir"
 
 	#Remove all rpmbuild sources and outputs
 	rm -f "${RPMBUILDROOT}/SOURCES/"*
