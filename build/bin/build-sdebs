@@ -37,7 +37,7 @@ build_debs() {
         "
     done
 
-    docker run --rm -v ${root_dir}:/home/builder/ssm-submodules debian:stretch-slim sh -c "
+    docker run --rm -v ${root_dir}:/home/builder/ssm-submodules debian:buster-slim sh -c "
         set -o errexit
         set -o xtrace
         umask 0000
@@ -54,6 +54,8 @@ build_debs() {
             ln -s /home/builder/ssm-submodules/build/rpmbuild-docker/dep \${GOPATH}/src/github.com/golang/
         GO111MODULE=off go install -ldflags=\"-X main.version=v0.5.4\" \${GOPATH}/src/github.com/golang/dep/cmd/dep
  
+        # avoid 'dubious ownership in repository' git error
+        find /home/builder/ssm-submodules/sources -maxdepth 2 -name '.git' -exec bash -c 'git config --global --add safe.directory \${0%/.git}' {} \;
         ${build_commands}
     "
 }
