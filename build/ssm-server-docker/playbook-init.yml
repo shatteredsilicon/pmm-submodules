@@ -98,7 +98,7 @@
       register: ssm_db
 
     - name: qan-api                    | Import MySQL database
-      when: ssm_db.changed
+      when: not ssm_db.failed
       vars:
         ansible_python_interpreter: /usr/bin/python2
       community.mysql.mysql_db:
