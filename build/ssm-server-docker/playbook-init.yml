@@ -43,6 +43,9 @@
     - name: MariaDB                    | Prepare MariaDB
       shell: rm -f /etc/my.cnf.d/auth_gssapi.cnf && /usr/bin/mysql_install_db --user=mysql --basedir=/usr --datadir=/var/lib/mysql
 
+    - name: MariaDB                    | Prepare MariaDB config files
+      shell: echo '!includedir /var/lib/mysql' >> /etc/my.cnf && mv /etc/my.cnf.d/page.cnf /var/lib/mysql/ 
+
     - name: SSM                        | Start services
       shell: ON_SSM_SERVER_SETUP=1 supervisord -c /etc/supervisord.conf &
 
