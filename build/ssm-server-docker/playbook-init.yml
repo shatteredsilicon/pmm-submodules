@@ -41,7 +41,10 @@
         value: true
 
     - name: MariaDB                    | Prepare MariaDB
-      shell: rm -f /etc/my.cnf.d/auth_gssapi.cnf && /usr/bin/mysql_install_db --user=mysql
+      shell: rm -f /etc/my.cnf.d/auth_gssapi.cnf && /usr/bin/mysql_install_db --user=mysql --basedir=/usr --datadir=/var/lib/mysql
+
+    - name: MariaDB                    | Prepare MariaDB config files
+      shell: echo '!includedir /var/lib/mysql' >> /etc/my.cnf && mv /etc/my.cnf.d/page.cnf /var/lib/mysql/ 
 
     - name: SSM                        | Start services
       shell: ON_SSM_SERVER_SETUP=1 supervisord -c /etc/supervisord.conf &
@@ -53,69 +56,13 @@
         delay: 30
         timeout: 60
 
-    - name: ssm-managed                | Create MySQL database
-      vars:
-        ansible_python_interpreter: /usr/bin/python2
-      community.mysql.mysql_db:
-        name: ssm-managed
-        state: present
-
-    - name: ssm-managed                | Create MySQL user
-      vars:
-        ansible_python_interpreter: /usr/bin/python2
-      community.mysql.mysql_user:
-        name: ssm-managed
-        host: localhost
-        password: '*816FFB19BC44AC2749D546E48FA0DF957EDB2C5A'
-        priv: 'ssm-managed.*:ALL'
-        encrypted: yes
-        state: present
-
-    - name: Orchestrator               | Create MySQL database
-      vars:
-        ansible_python_interpreter: /usr/bin/python2
-      community.mysql.mysql_db:
-        name: orchestrator
-        state: present
-
-    - name: Orchestrator               | Create MySQL user
-      vars:
-        ansible_python_interpreter: /usr/bin/python2
-      community.mysql.mysql_user:
-        name: orchestrator
-        host: localhost
-        password: '*0AD183209365CECFB9275669074B645DFEF2D180'
-        priv: 'orchestrator.*:ALL'
-        encrypted: yes
-        state: present
-
-    - name: qan-api                    | Create MySQL database
-      vars:
-        ansible_python_interpreter: /usr/bin/python2
-      community.mysql.mysql_db:
-        name: ssm
-        state: present
-      register: ssm_db
-
     - name: qan-api                    | Import MySQL database
-      when: not ssm_db.failed
       vars:
         ansible_python_interpreter: /usr/bin/python2
       community.mysql.mysql_db:
         name: ssm
         state: import
         target: /usr/share/ssm-qan-api/schema/ssm.sql
-
-    - name: qan-api                    | Create MySQL user
-      vars:
-        ansible_python_interpreter: /usr/bin/python2
-      community.mysql.mysql_user:
-        name: qan-api
-        host: localhost
-        password: '*0AA26B75B9CEB6A29B3202E2766D030228F5FC29'
-        priv: 'ssm.*:ALL'
-        encrypted: yes
-        state: present
 
     - name: qan-api                    | Create MySQL user for Grafana
       vars:
