@@ -40,6 +40,14 @@
         option: enable_gzip
         value: true
 
+    - name: MariaDB                    | Create /var/lib/mysql-files
+      ansible.builtin.file:
+        path: /var/lib/mysql-files
+        state: directory
+        owner: mysql
+        group: mysql
+        mode: '0440'
+
     - name: MariaDB                    | Prepare MariaDB
       shell: rm -f /etc/my.cnf.d/auth_gssapi.cnf && /usr/bin/mysql_install_db --user=mysql --basedir=/usr --datadir=/var/lib/mysql
 
