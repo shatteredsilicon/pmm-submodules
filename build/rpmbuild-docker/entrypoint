@@ -1,0 +1,15 @@
+#!/bin/bash
+
+: "${RUNAS:=1000}"
+: "${RUNGRP:=${RUNAS}}"
+
+if [ "${RUNAS}" != "1000" -o "${RUNGRP}" != 1000 ]
+then
+	groupmod -g "${RUNGRP}" builder
+	usermod -u "${RUNAS}" -G users,wheel,mock builder
+
+	find /home/builder -xdev -user builder -exec chgrp -h builder \{\} +
+	chown -R "${RUNAS}:${RUNGRP}" /mnt/cache /mnt/tmp/mock
+fi
+
+HOME=/home/builder setpriv --reuid "${RUNAS}" --regid "${RUNGRP}" --init-groups "${@}"
