@@ -6,3 +6,4 @@ results/
 logs/
 docs/
 .kitchen/
+build/bin/runenv

@@ -1,3 +1,11 @@
+# Source initial values from runenv. This file is populated by the external build system
+# runenv should not be checked in
+runenv=$(cd $(dirname $0); pwd -P)/runenv
+if [ -r "${runenv}" ]
+then
+	source "${runenv}"
+fi
+
 bin_dir=$(cd $(dirname $0); pwd -P)
 root_dir=$(cd $(dirname $0)/../..; pwd -P)
 
@@ -17,6 +25,9 @@ logs_dir=${root_dir}/logs
 docs_dir=${root_dir}/docs
 audit_dir="${result_dir}/audit"
 buildlog_dir="${result_dir}/buildlogs"
-rpmbuild_docker_image=${RPMBUILD_DOCKER_IMAGE:-"shatteredsilicon/rpmbuild"}
+rpmbuild_docker_name="${RPMBUILD_DOCKER_NAME:-shatteredsilicon/rpmbuild}"
+rpmbuild_docker_tag="${RPMBUILD_DOCKER_TAG:-latest}"
+rpmbuild_docker_image="${RPMBUILD_DOCKER_IMAGE:-${rpmbuild_docker_name}:${rpmbuild_docker_tag}}"
+
 packages=(ssm-qan-app ssm-client percona-toolkit-ssm-minimal ssm-dashboards ssm-manage ssm-managed ssm-server ssm-qan-api consul orchestrator rds_exporter snmp_exporter prometheus grafana)
 deb_packages=(ssm-client)
