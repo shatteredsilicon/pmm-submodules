@@ -57,6 +57,11 @@ RUN mkdir -p /mnt/tmp/mock && chown -R builder:builder /mnt/tmp/mock
 VOLUME /mnt/cache
 VOLUME /mnt/tmp
 
-USER builder
+#USER builder
+
+COPY entrypoint /usr/local/sbin/entrypoint
+RUN chmod 744 /usr/local/sbin/entrypoint
+ENTRYPOINT ["/usr/local/sbin/entrypoint"]
+
 ENV FLAVOR=rpmbuild OS=rockylinux DIST=el8 PATH=$PATH:${GOPATH}/bin
 WORKDIR /home/builder

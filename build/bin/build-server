@@ -23,7 +23,7 @@ build() {
     cp -r ${rpm_dir}/* ${server_build_dir}/RPMS
     cp ${root_dir}/build/ssm-server-docker/* ${server_build_dir}/
 
-    docker run --rm -v ${server_build_dir}/RPMS:/home/builder/RPMS ${rpmbuild_docker_image} sh -c "
+    docker run --rm -v ${server_build_dir}/RPMS:/home/builder/RPMS --env RUNAS="$(id -u)" ${rpmbuild_docker_image} sh -c "
         set -o errexit
         set -o xtrace
         umask 0000
@@ -36,11 +36,11 @@ build() {
     for rpm in $(cd ${rpm_dir}; find . -name '*.rpm'); do
         echo $rpm
         rpm_name=$(
-            docker run --rm -v ${rpm_dir}:/home/builder/rpm -w /home/builder/rpm ${rpmbuild_docker_image} \
+		docker run --rm -v ${rpm_dir}:/home/builder/rpm -w /home/builder/rpm --env RUNAS="$(id -u)" ${rpmbuild_docker_image} \
                 rpm -q --qf '%{name}' -p $rpm
         )
         rpm_fullname=$(
-            docker run --rm -v ${rpm_dir}:/home/builder/rpm -w /home/builder/rpm ${rpmbuild_docker_image} \
+		docker run --rm -v ${rpm_dir}:/home/builder/rpm -w /home/builder/rpm --env RUNAS="$(id -u)" ${rpmbuild_docker_image} \
                 rpm -q -p $rpm
         )
         sed -i -e "s/- ${rpm_name}$/- ${rpm_fullname}/" ${server_build_dir}/playbook-install.yml

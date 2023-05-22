@@ -6,7 +6,7 @@
 %global project                 percona
 %global repo                    percona-toolkit
 %global import_path             %{provider}.%{provider_tld}/%{project}/%{repo}
-%global percona_toolkit_version 3.4.0
+%global percona_toolkit_version 3.5.1
 
 Name:           %{repo}-ssm-minimal
 Summary:        Percona Toolkit (SSM Minimal)

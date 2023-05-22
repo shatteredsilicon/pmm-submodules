@@ -18,7 +18,7 @@ update_grafana_node_modules() {
         tar -zcpf ${submodule_dir}/grafana/grafana-node_modules-${version}.tar.gz node_modules
     else
         chown -R 1000:1000 ${submodule_dir}
-        docker run --rm -v ${submodule_dir}:/home/builder/sources ${rpmbuild_docker_image} sh -c "
+	docker run --rm -v ${submodule_dir}:/home/builder/sources --env RUNAS="$(id -u)" ${rpmbuild_docker_image} sh -c "
             set -o errexit
             set -o xtrace
 
