@@ -102,7 +102,7 @@ make server
 DOCKER_TAG=foo/bar:latest make server
 ```
 
-An docker image called `shatteredsilicon/ssm-server` (or `${DOCKER_TAG}`) will be created once this command succeed. The `tag` of this docker image is defined in file `VERSION` in the root of this project.
+An docker image called `shatteredsilicon/ssm-server` (or `${DOCKER_TAG}`) will be created once this command succeed.
 
 This command will also generate .src.rpm in `results/SRPMS` and .rpm in `results/RPMS`.
 

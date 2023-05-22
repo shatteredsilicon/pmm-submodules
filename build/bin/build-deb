@@ -22,7 +22,7 @@ EOF
 
 build_deb() {
     local package=$1
-    local version=
+    local version="${ssm_version}"
     local build_dir=
 
     if [ "$package" != "ssm-client" ]; then
@@ -30,34 +30,25 @@ build_deb() {
         exit 1
     fi
 
-    pushd ${submodule_dir}/${package}
-        if [[ -d .git ]] || [[ -f .git ]]; then
-            version=$(git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1)
-        else
-            echo "can't read version from git tag"
-            exit 1
-        fi
-    popd
-
-    if ! compgen -G  "${sdeb_dir}/${package}_${version##v}*.dsc" > /dev/null; then
+    if ! compgen -G  "${sdeb_dir}/${package}_${version}*.dsc" > /dev/null; then
         echo "sdeb files not exist"
         exit 1
     fi
 
     build_dir=${tmp_dir}/debbuild/DEB
     mkdir -p ${build_dir}
-    cp ${sdeb_dir}/${package}_${version##v}*.dsc ${build_dir}
-    cp ${sdeb_dir}/${package}_${version##v}*.tar.gz ${build_dir}
+    cp ${sdeb_dir}/${package}_${version}*.dsc ${build_dir}
+    cp ${sdeb_dir}/${package}_${version}*.tar.gz ${build_dir}
 
     pushd ${build_dir}
-        dpkg-source -x ${sdeb_dir}/${package}_${version##v}*.dsc
-        pushd ${package}-${version##v}
+        dpkg-source -x ${sdeb_dir}/${package}_${version}*.dsc
+        pushd ${package}-${version}
             dpkg-buildpackage -b -uc
         popd
 
         mkdir -p ${deb_dir}
-        mv ${tmp_dir}/debbuild/DEB/${package}_${version##v}*.deb ${deb_dir}
-        mv ${tmp_dir}/debbuild/DEB/${package}_${version##v}*.changes ${deb_dir}
+        mv ${tmp_dir}/debbuild/DEB/${package}_${version}*.deb ${deb_dir}
+        mv ${tmp_dir}/debbuild/DEB/${package}_${version}*.changes ${deb_dir}
     popd
 
     rm -rf ${tmp_dir}/debbuild/DEB/${package}*

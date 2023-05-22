@@ -1,7 +1,8 @@
 bin_dir=$(cd $(dirname $0); pwd -P)
 root_dir=$(cd $(dirname $0)/../..; pwd -P)
 
-ssm_version=${SSM_VERSION:-$(cat ${root_dir}/VERSION)}
+ssm_version="${SSM_VERSION:?Specify SSM_VERSION}"
+ssm_version="${ssm_version##v}"
 
 server_build_dir=${root_dir}/tmp/ssm-server
 buildimg_build_dir=${root_dir}/tmp/buildimg

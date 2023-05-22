@@ -39,18 +39,14 @@ create_rpm() {
 
     mkdir -p ${srpm_dir} ${rpm_dir}
 
-    pushd ${submodule_dir}/$package
-        if [[ -d .git ]] || [[ -f .git ]]; then
-            version=$(git tag -l --sort=-version:refname "v[0-9]*" --merged | head -n 1)
-        fi
-    popd
-
-    local rpm_filename=
-    if [ -n "${version}" ]; then
-        rpm_filename="$(rpmquery ${srpm_dir}/${package}-${version##v}*.src.rpm).rpm"
-    else
-        rpm_filename="$(rpmquery ${srpm_dir}/${package}*.src.rpm).rpm"
+    #TODO: Arange a blackboard file to pass in the correct srpm filenames
+    srpm_filename=$(ls ${srpm_dir}/${package}*.src.rpm | tail -1)
+    if [ -z "${srpm_filename}" ]
+    then
+	echo "Failed to find srpm for ${package}. Failing" 1>&2
+	exit -1
     fi
+    rpm_filename="$(rpmquery "${srpm_filename}").rpm"
 
     if [ -f "${rpm_dir}/${rpm_filename}" ]; then
         echo "${rpm_filename} exists, skipped"
