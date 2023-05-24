@@ -118,6 +118,7 @@ build() {
                         echo "$entity" >> ${vt_log}
                     fi
                 fi
+                entity=
                 entity_count=$((entity_count-1))
             fi
         done
