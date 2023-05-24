@@ -153,7 +153,11 @@ check_rkhunter_log() {
             echo "$line" >> "$dest_file"
             local filename=$(echo "$line" | grep -oP '(?<=\[\d{2}:\d{2}:\d{2}\])\s*/.*(?=\s+\[ Warning \])' | awk '{$1=$1};1')
             if [ -f "${image_dir}${filename}" ] && [ -s "${image_dir}${filename}" ]; then
-                vt scan file "${image_dir}${filename}" >> "${vt_files}"
+                local resp="$(vt scan file "${image_dir}${filename}")"
+                if [[ "${resp}" =~ "Quota exceeded" ]]; then
+                    exit 1
+                fi
+                echo "${resp}" >> "${vt_files}"
             fi
         done < "$log_file"
     fi
@@ -171,7 +175,11 @@ check_clamdscan_log() {
             echo "$line" >> "$dest_file"
             local filename=$(echo ${line%%': '*} | awk '{$1=$1};1')
             if [ -f "${image_dir}${filename}" ] && [ -s "${image_dir}${filename}" ]; then
-                vt scan file "${image_dir}${filename}" >> "${vt_files}"
+                local resp="$(vt scan file "${image_dir}${filename}")"
+                if [[ "${resp}" =~ "Quota exceeded" ]]; then
+                    exit 1
+                fi
+                echo "${resp}" >> "${vt_files}"
             fi
         fi
     done < "$log_file"
@@ -198,7 +206,11 @@ check_orphan_file_log() {
         cat "$log_file" >> "$dest_file"
         while read -r line; do
             if [ -f "${image_dir}${line}" ] && [ -s "${image_dir}${line}" ]; then
-                vt scan file "${image_dir}${line}" >> "${vt_files}"
+                local resp="$(vt scan file "${image_dir}${line}")"
+                if [[ "${resp}" =~ "Quota exceeded" ]]; then
+                    exit 1
+                fi
+                echo "${resp}" >> "${vt_files}"
             fi
         done < "$log_file"
     fi
