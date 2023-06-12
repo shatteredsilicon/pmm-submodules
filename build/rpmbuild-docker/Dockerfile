@@ -57,8 +57,8 @@ RUN mkdir -p /mnt/tmp/mock && chown -R builder:builder /mnt/tmp/mock
 VOLUME /mnt/cache
 VOLUME /mnt/tmp
 
-#USER builder
-
+# Entrypoint runs as root to set up the system, then drops privs
+USER root
 COPY entrypoint /usr/local/sbin/entrypoint
 RUN chmod 744 /usr/local/sbin/entrypoint
 ENTRYPOINT ["/usr/local/sbin/entrypoint"]

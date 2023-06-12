@@ -28,6 +28,7 @@ buildlog_dir="${result_dir}/buildlogs"
 rpmbuild_docker_name="${RPMBUILD_DOCKER_NAME:-shatteredsilicon/rpmbuild}"
 rpmbuild_docker_tag="${RPMBUILD_DOCKER_TAG:-latest}"
 rpmbuild_docker_image="${RPMBUILD_DOCKER_IMAGE:-${rpmbuild_docker_name}:${rpmbuild_docker_tag}}"
+rpmbuild_docker_cache_vol="${RPMBUILD_DOCKER_CACHE_VOL:-ssm-build-cache}"
 
 packages=(ssm-qan-app ssm-client percona-toolkit-ssm-minimal ssm-dashboards ssm-manage ssm-managed ssm-server ssm-qan-api consul orchestrator rds_exporter snmp_exporter prometheus grafana)
 deb_packages=(ssm-client)
