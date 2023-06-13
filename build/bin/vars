@@ -9,8 +9,14 @@ fi
 bin_dir=$(cd $(dirname $0); pwd -P)
 root_dir=$(cd $(dirname $0)/../..; pwd -P)
 
-ssm_version="${SSM_VERSION:?Specify SSM_VERSION}"
-ssm_version="${ssm_version##v}-${SSM_BUILD:-1}"
+ssm_version="${SSM_VERSION:?Specify SSM_VERSION}-${SSM_BUILD:-1}"
+#Sanity check version
+if [[ ! "${ssm_version}" =~ ^[[:digit:]]+\.[[:digit:]]+ ]]
+then
+	echo "Invalid version specified: ${ssm_version}"
+	echo "Must start with a number, a period and another number."
+	exit -1
+fi
 
 server_build_dir=${root_dir}/tmp/ssm-server
 buildimg_build_dir=${root_dir}/tmp/buildimg
