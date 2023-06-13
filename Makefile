@@ -23,6 +23,9 @@ server: submodules
 rpmbuild-docker: submodules
 	./build/bin/build-rpmbuild-docker
 
+debbuild-docker: submodules
+	./build/bin/build-debbuild-docker
+
 show-vulnerabilities:
 	./build/bin/show-vulnerabilities
 

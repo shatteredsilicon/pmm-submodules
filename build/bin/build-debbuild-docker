@@ -1,0 +1,17 @@
+#!/bin/bash
+
+set -o errexit
+set -o xtrace
+umask 0000
+
+. $(dirname $0)/vars
+
+cp -r "${root_dir}/build/rpmbuild-docker/dep" "${root_dir}/build/debbuild-docker/dep"
+
+echo "Building debbuild image as ${debbuild_docker_image}"
+
+docker build -t "${debbuild_docker_image}" "${root_dir}/build/debbuild-docker"
+
+# use clamd@scan service to scan the docker image
+#docker save "${debbuild_docker_image}" | clamdscan --quiet -
+# TODO: Fix this scan, here and in build-rpmbuild-docker
