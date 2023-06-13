@@ -10,7 +10,7 @@ bin_dir=$(cd $(dirname $0); pwd -P)
 root_dir=$(cd $(dirname $0)/../..; pwd -P)
 
 ssm_version="${SSM_VERSION:?Specify SSM_VERSION}"
-ssm_version="${ssm_version##v}"
+ssm_version="${ssm_version##v}-${SSM_BUILD:-1}"
 
 server_build_dir=${root_dir}/tmp/ssm-server
 buildimg_build_dir=${root_dir}/tmp/buildimg
@@ -29,6 +29,10 @@ rpmbuild_docker_name="${RPMBUILD_DOCKER_NAME:-shatteredsilicon/rpmbuild}"
 rpmbuild_docker_tag="${RPMBUILD_DOCKER_TAG:-latest}"
 rpmbuild_docker_image="${RPMBUILD_DOCKER_IMAGE:-${rpmbuild_docker_name}:${rpmbuild_docker_tag}}"
 rpmbuild_docker_cache_vol="${RPMBUILD_DOCKER_CACHE_VOL:-ssm-build-cache}"
+
+debbuild_docker_name="${DEBBUILD_DOCKER_NAME:-shatteredsilicon/debbuild}"
+debbuild_docker_tag="${DEBBUILD_DOCKER_TAG:-latest}"
+debbuild_docker_image="${DEBBUILD_DOCKER_IMAGE:-${debbuild_docker_name}:${debbuild_docker_tag}}"
 
 packages=(ssm-qan-app ssm-client percona-toolkit-ssm-minimal ssm-dashboards ssm-manage ssm-managed ssm-server ssm-qan-api consul orchestrator rds_exporter snmp_exporter prometheus grafana)
 deb_packages=(ssm-client)
