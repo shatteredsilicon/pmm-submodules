@@ -27,7 +27,7 @@ shell_quote_string() {
   echo "$1" | sed -e 's,\([^a-zA-Z0-9/_.=-]\),\\\1,g'
 }
 
-build_debs() {
+build_debsold() {
     local build_commands=
 
     for package in ${PACKAGES[@]}; do
@@ -37,6 +37,7 @@ build_debs() {
         "
     done
 
+    runas=$(id -u)
     docker run --rm -v ${root_dir}:/home/builder/ssm-submodules debian:buster-slim sh -c "
         set -o errexit
         set -o xtrace
@@ -46,7 +47,8 @@ build_debs() {
         apt update && apt install -y golang-1.17 && \
             rm /etc/apt/sources.list.d/bullseye-backports.list && \
             apt update && apt install -y git rsync build-essential devscripts
-        useradd builder -u 1000 -m -G users,wheel && \
+	groupadd -g "${runas}" builder && \
+        useradd builder -u ${runas} -g builder -m -G users,wheel && \
             chmod 755 /home/builder && su - builder
         export GOROOT=/usr/lib/go-1.17 && export GOPATH=/home/builder/go &&
             PATH=/usr/lib/go-1.17/bin:\${GOPATH}/bin:\$PATH
@@ -55,9 +57,18 @@ build_debs() {
         GO111MODULE=off go install -ldflags=\"-X main.version=v0.5.4\" \${GOPATH}/src/github.com/golang/dep/cmd/dep
  
         # avoid 'dubious ownership in repository' git error
-        find /home/builder/ssm-submodules/sources -maxdepth 2 -name '.git' -exec bash -c 'git config --global --add safe.directory \${0%/.git}' {} \;
+        # find /home/builder/ssm-submodules/sources -maxdepth 2 -name '.git' -exec bash -c 'git config --global --add safe.directory \${0%/.git}' {} \;
         ${build_commands}
     "
+}
+
+build_debs() {
+	for package in ${PACKAGES[@]}
+	do
+		docker run --rm -v ${root_dir}:/home/builder/ssm-submodules --env RUNAS="$(id -u)" "${debbuild_docker_image}" sh -c "
+			/home/builder/ssm-submodules/build/bin/build-sdeb ${package}
+		"
+	done
 }
 
 main() {

@@ -27,7 +27,7 @@ shell_quote_string() {
   echo "$1" | sed -e 's,\([^a-zA-Z0-9/_.=-]\),\\\1,g'
 }
 
-build_debs() {
+build_debsold() {
     local build_commands=
 
     for package in ${PACKAGES[@]}; do
@@ -58,6 +58,15 @@ build_debs() {
         find /home/builder/ssm-submodules/sources -maxdepth 2 -name '.git' -exec bash -c 'git config --global --add safe.directory \${0%/.git}' {} \;
         ${build_commands}
     "
+}
+
+build_debs() {
+	for package in ${PACKAGES[@]}
+	do
+		docker run --rm -v ${root_dir}:/home/builder/ssm-submodules --env RUNAS="$(id -u)" "${debbuild_docker_image}" sh -c "
+			/home/builder/ssm-submodules/build/bin/build-deb ${package}
+		"
+	done
 }
 
 main() {

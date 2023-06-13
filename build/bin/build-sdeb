@@ -36,6 +36,7 @@ build_sdeb() {
     pushd ${build_dir}
         sed -i "s/%{_version}/${version}/g" debian/control
         sed -i "s/%{_version}/${version}/g" debian/rules
+        sed -i "s/%{_version}/${version}/g" debian/changelog
         dpkg-buildpackage -S -us
     popd
 

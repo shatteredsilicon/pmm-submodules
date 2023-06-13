@@ -42,7 +42,7 @@ build_deb() {
 
     pushd ${build_dir}
         dpkg-source -x ${sdeb_dir}/${package}_${version}*.dsc
-        pushd ${package}-${version}
+        pushd ${package}-${SSM_VERSION}
             dpkg-buildpackage -b -uc
         popd
 
