@@ -108,7 +108,7 @@ function build_generic_tarball()
 	version="${3}"
 	workdir="${4}"
 
-	tarball="${5:-${package}${version:+-${version}}.tar.gz}"
+	tarball="${5:-${package}${ssm_sourcever:+-${ssm_sourcever}}.tar.gz}"
 
 
 	pkgroot=""
@@ -233,7 +233,9 @@ function assemble_gitsubmodule()
 
 		version="${ssm_version}"
 
-		sed "s/%{_version}/${version}/g" "${package}.spec" > "${RPMBUILDROOT}/SPECS/${package}.spec"
+		cp "${package}.spec" "${RPMBUILDROOT}/SPECS/${package}.spec"
+		sed -i "s/%{_version}/${ssm_sourcever}/g"  "${RPMBUILDROOT}/SPECS/${package}.spec"
+		sed -i "s/%{_release}/${ssm_releasever}/g" "${RPMBUILDROOT}/SPECS/${package}.spec"
 
 		# Get exterrnal dependencies
 		trace "${package} : Downloading external sources"

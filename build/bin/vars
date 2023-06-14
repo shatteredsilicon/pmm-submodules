@@ -9,7 +9,10 @@ fi
 bin_dir=$(cd $(dirname $0); pwd -P)
 root_dir=$(cd $(dirname $0)/../..; pwd -P)
 
-ssm_version="${SSM_VERSION:?Specify SSM_VERSION}-${SSM_BUILD:-1}"
+ssm_sourcever="${SSM_VERSION:?Specify SSM_VERSION}"
+ssm_releasever="${SSM_BUILD:-1}"
+ssm_version="${ssm_sourcever}-${ssm_releasever}"
+
 #Sanity check version
 if [[ ! "${ssm_version}" =~ ^[[:digit:]]+\.[[:digit:]]+ ]]
 then
