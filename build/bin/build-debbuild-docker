@@ -14,4 +14,4 @@ docker build -t "${debbuild_docker_image}" "${root_dir}/build/debbuild-docker"
 
 # use clamd@scan service to scan the docker image
 #docker save "${debbuild_docker_image}" | clamdscan --quiet -
-# TODO: Fix this scan, here and in build-rpmbuild-docker
+# TODO: Fix this scan
