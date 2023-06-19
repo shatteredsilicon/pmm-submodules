@@ -252,7 +252,7 @@ function assemble_gitsubmodule()
 					mv ${RPMBUILDROOT}/SOURCES/${submod}*.tar.gz "${tmp_dir}/ssm-client"
 				done
 				trace "ssm-client : Building agregate tarball"
-				tar -czf "${RPMBUILDROOT}/SOURCES/ssm-client-${version}.tar.gz" -C "${tmp_dir}" ssm-client
+				tar -czf "${RPMBUILDROOT}/SOURCES/ssm-client-${ssm_sourcever}.tar.gz" -C "${tmp_dir}" ssm-client
 				;;
 			ssm-dashboards) build_generic_tarball "${package}" "${submodule_dir}/${package}" "${version}" "pmm-app" ;;
 			ssm-server) build_generic_tarball "${package}" "${submodule_dir}/${package}" "${version}" "password-page" ;;
