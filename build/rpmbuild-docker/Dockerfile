@@ -1,4 +1,4 @@
-FROM almalinux:8.7-minimal
+FROM almalinux:8.8-minimal
 
 RUN microdnf -y update && \
     microdnf -y install yum

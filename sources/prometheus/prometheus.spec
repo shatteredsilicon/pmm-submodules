@@ -41,10 +41,10 @@
 %global repo            prometheus
 %global provider_prefix %{provider}.%{provider_tld}/%{project}/%{repo}
 %global import_path     %{provider_prefix}
-%global prometheus_tag  v2.35.0
+%global prometheus_tag  v2.45.0
 
 Name:           %{repo}
-Version:        2.35.0
+Version:        2.45.0
 Release:        1%{?dist}
 Summary:        The Prometheus monitoring system and time series database
 License:        ASL 2.0
