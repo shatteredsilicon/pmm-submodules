@@ -6,4 +6,3 @@ baseurl = https://ftp.redsleeve.org/pub/misc/phantomjs/$basearch/
 gpgcheck = 0 
 enabled = 1 
 """ 
-

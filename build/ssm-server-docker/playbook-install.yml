@@ -24,6 +24,7 @@
         - logrotate
         - python2-PyMySQL
         - python2-pip
+        - cronie
 
     - name: cloud-init                 | Create dirs
       file: path={{ item }} state=directory
