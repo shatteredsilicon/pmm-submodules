@@ -163,7 +163,7 @@ function build_generic_tarball()
 		(
 			cd "${pkgroot}/${workdir}"
 			trace "${package} : Pulling npm deps in $(pwd)"
-			npm install --python=python2 --no-audit --ignore-scripts --legacy-peer-deps || fatal "${package} : npm install failed"
+			npm install --no-audit --ignore-scripts --legacy-peer-deps || fatal "${package} : npm install failed"
 
 			trace "${package} : Auditing npm package with yarn"
 			#yarn import

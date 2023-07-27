@@ -22,8 +22,7 @@
       with_items:
         - supervisor
         - logrotate
-        - python2-PyMySQL
-        - python2-pip
+        - python3-pip
         - cronie
 
     - name: cloud-init                 | Create dirs
@@ -32,13 +31,14 @@
         - /var/lib/cloud/scripts/per-once
         - /var/lib/cloud/scripts/per-boot
 
-    - name: Percona Server for MySQL   | Install Python 2 Modules
+    - name: Percona Server for MySQL   | Install Python Modules
       when: ansible_os_family == 'RedHat'
       pip:
         name:
           - requests
+          - PyMySQL
         extra_args: --user
-        executable: pip2
+        executable: pip3
 
     - name: Percona Server for MySQL   | stat /root/.my.cnf
       stat: path=/root/.my.cnf

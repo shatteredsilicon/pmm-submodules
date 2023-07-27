@@ -5,7 +5,7 @@ RUN microdnf -y update && \
 RUN yum -y install epel-release
 RUN dnf module enable -y nodejs:18
 RUN yum -y --allowerasing install nodejs yum-utils rpmdevtools createrepo_c mock git golang \
-        jq python2 make gcc-c++ rsync rkhunter coreutils
+        jq make gcc-c++ rsync rkhunter coreutils
 
 RUN npm uninstall -g yarn pnpm && npm install -g npm@latest corepack
 

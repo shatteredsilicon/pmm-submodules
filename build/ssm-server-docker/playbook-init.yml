@@ -80,17 +80,15 @@
         timeout: 60
 
     - name: qan-api                    | Import MySQL database
-      vars:
-        ansible_python_interpreter: /usr/bin/python2
       community.mysql.mysql_db:
+        login_unix_socket: /var/lib/mysql/mysql.sock
         name: ssm
         state: import
         target: /usr/share/ssm-qan-api/schema/ssm.sql
 
     - name: qan-api                    | Create MySQL user for Grafana
-      vars:
-        ansible_python_interpreter: /usr/bin/python2
       community.mysql.mysql_user:
+        login_unix_socket: /var/lib/mysql/mysql.sock
         name: grafana
         host: localhost
         password: '*58324E2D77A9BBFD9DD1E904649697615FE74649'
@@ -125,11 +123,12 @@
     - name: SSM                    | Remove Python Modules
       pip:
         name:
-          - requests
+          - PyMySQL
+        executable: pip3
         state: absent
 
     - name: SSM                        | Remove OS tools
-      shell: microdnf -y remove python2-PyMySQL python2-pip
+      shell: microdnf -y remove python3-pip
 
     - name: SSM                        | Cleanup yum cache
       shell: microdnf clean all
