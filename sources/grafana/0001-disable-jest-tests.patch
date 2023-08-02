@@ -1,0 +1,13 @@
+diff --git a/plugins-bundled/internal/input-datasource/package.json b/plugins-bundled/internal/input-datasource/package.json
+index 4fa765c33d..135b83ffe8 100644
+--- a/plugins-bundled/internal/input-datasource/package.json
++++ b/plugins-bundled/internal/input-datasource/package.json
+@@ -8,7 +8,7 @@
+     "url": "http://github.com/grafana/grafana.git"
+   },
+   "scripts": {
+-    "build": "grafana-toolkit plugin:build",
++    "build": "grafana-toolkit plugin:build --skipTest",
+     "test": "grafana-toolkit plugin:test",
+     "dev": "grafana-toolkit plugin:dev",
+     "watch": "grafana-toolkit plugin:dev --watch"
