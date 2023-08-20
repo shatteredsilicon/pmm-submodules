@@ -1,13 +1,13 @@
-FROM almalinux:8.8-minimal
+FROM rockylinux:9.2-minimal
 
 RUN microdnf -y update && \
     microdnf -y install yum
 RUN yum -y install epel-release
 RUN dnf module enable -y nodejs:18
 RUN yum -y --allowerasing install nodejs yum-utils rpmdevtools createrepo_c mock git golang \
-        jq python2 make gcc-c++ rsync rkhunter coreutils
+        jq make gcc-c++ rsync rkhunter coreutils
 
-RUN npm install -g npm@latest
+RUN npm uninstall -g yarn pnpm && npm install -g npm@latest corepack
 
 RUN useradd builder -u 1000 -m -G users,wheel,mock && \
     chmod 755 /home/builder
@@ -20,14 +20,14 @@ RUN \
 	corepack enable &&\
 	corepack prepare yarn@stable --activate
 
-COPY ssm-8.tpl /etc/mock/templates/ssm-8.tpl
+COPY ssm-9.tpl /etc/mock/templates/ssm-9.tpl
 
-COPY ssm-8.cfg /etc/mock/ssm-8-.cfg
+COPY ssm-9.cfg /etc/mock/ssm-9-.cfg
 
 RUN \
 	ARCH="$(rpm --eval "%{_arch}")" &&\
-	sed "s/_ARCH_/${ARCH}/g" /etc/mock/ssm-8-.cfg > "/etc/mock/ssm-8-${ARCH}.cfg" &&\
-	rm /etc/mock/ssm-8-.cfg
+	sed "s/_ARCH_/${ARCH}/g" /etc/mock/ssm-9-.cfg > "/etc/mock/ssm-9-${ARCH}.cfg" &&\
+	rm /etc/mock/ssm-9-.cfg
 
 ENV GOPATH=/home/builder/go
 RUN mkdir -p ${GOPATH}/src/github.com/golang
@@ -63,5 +63,5 @@ COPY entrypoint /usr/local/sbin/entrypoint
 RUN chmod 744 /usr/local/sbin/entrypoint
 ENTRYPOINT ["/usr/local/sbin/entrypoint"]
 
-ENV FLAVOR=rpmbuild OS=rockylinux DIST=el8 PATH=$PATH:${GOPATH}/bin
+ENV FLAVOR=rpmbuild OS=rockylinux DIST=el9 PATH=$PATH:${GOPATH}/bin
 WORKDIR /home/builder

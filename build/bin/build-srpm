@@ -114,23 +114,8 @@ function build_generic_tarball()
 	pkgroot=""
 
 	trace "${package} : Building tarball from ${packagesrc} into ${tarball}"
-	if [ -f "${packagesrc}/${workdir:+$workdir/}yarn.lock" ]
-	then
-		pkgroot="${YARNPATH}/src/$(basename "${packagesrc}")"
-		mkdir -p "${pkgroot}"
-		mkdir -p "${YARNPATH}/cache"
-		cp -rp "${packagesrc}" "${pkgroot}/../"
-		(
-			cd "${pkgroot}/${workdir}"
-			trace "${package} : Pulling yarn deps in $(pwd)"
-			yarn --no-progress --emoji false --ignore-scripts --network-timeout 300000 || fatal "${package} : yarn failed"
 
-			trace "${package} : Auditing with Yarn"
-			# Yarn audit returns failure if any issue are found, so just check the report file is created
-			yarn audit --json > "${auditto}/${package}.json" || true
-		       	[ -s "${auditto}/${package}.json" ] || fatal "${package} : yarn audit failed"
-		)
-	elif [ -f "${packagesrc}/${workdir:+$workdir/}Gopkg.toml" ]
+	if [ -f "${packagesrc}/${workdir:+$workdir/}Gopkg.toml" ]
 	then
 		pkgroot="${GOPATH}/src/$(basename "${packagesrc}")"
 		mkdir -p "${pkgroot}"
@@ -155,6 +140,32 @@ function build_generic_tarball()
 			trace "${package} : Auditing go modules"
 			GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json ${NANCY_CACHE:+-d "${NANCY_CACHE}"} > "${auditto}/${package}.json" || warn "${package} : Audit error"
 		)
+	fi
+
+	backend_pkgroot="$pkgroot"
+
+	if [ -f "${packagesrc}/${workdir:+$workdir/}yarn.lock" ]
+	then
+		pkgroot="${YARNPATH}/src/$(basename "${packagesrc}")"
+		mkdir -p "${pkgroot}"
+		mkdir -p "${YARNPATH}/cache"
+		cp -rp "${packagesrc}" "${pkgroot}/../"
+		(
+			cd "${pkgroot}/${workdir}"
+			trace "${package} : Pulling yarn deps in $(pwd)"
+
+			if [ "$package" == "grafana" ]
+			then
+				YARN_CACHE_FOLDER="${pkgroot}/${workdir:+$workdir/}.yarn/cache" YARN_CHECKSUM_BEHAVIOR=update yarn install --mode "skip-build" --network-timeout 300000 || fatal "${package} : yarn failed"
+			else
+				yarn --no-progress --emoji false --ignore-scripts --network-timeout 300000 || fatal "${package} : yarn failed"
+			fi
+
+			trace "${package} : Auditing with Yarn"
+			# Yarn audit returns failure if any issue are found, so just check the report file is created
+			yarn audit --json > "${auditto}/${package}.json" || true
+				[ -s "${auditto}/${package}.json" ] || fatal "${package} : yarn audit failed"
+		)
 	elif [ -f "${packagesrc}/${workdir:+$workdir/}package.json" ]
 	then
 		pkgroot="${NPMPATH}/src/$(basename "${packagesrc}")"
@@ -163,16 +174,21 @@ function build_generic_tarball()
 		(
 			cd "${pkgroot}/${workdir}"
 			trace "${package} : Pulling npm deps in $(pwd)"
-			npm install --python=python2 --no-audit --ignore-scripts --legacy-peer-deps || fatal "${package} : npm install failed"
+			npm install --no-audit --ignore-scripts --legacy-peer-deps || fatal "${package} : npm install failed"
 
 			trace "${package} : Auditing npm package with yarn"
 			#yarn import
 			## Yarn audit returns failure if any issue are found, so just check the report file is created
 			#yarn audit --json > "${auditto}/${package}.json" || true
-		       	#[ -s "${auditto}/${package}.json" ] || fatal "${package} : yarn audit failed"
+			#[ -s "${auditto}/${package}.json" ] || fatal "${package} : yarn audit failed"
 			warn "${package} : Vulnarability audit not implemented"
 		)
-	else
+	fi
+
+	[ ! -z "$backend_pkgroot" ] && [ "$backend_pkgroot" != "$pkgroot" ] && cp -r "$backend_pkgroot/vendor" "$pkgroot"
+
+	if [ -z "$pkgroot" ]
+	then
 		warn "Don't know how to get dependencies for ${package} (src: ${packagesrc} workdir: ${workdir})"
 		pkgroot="${packagesrc}"
 	fi
@@ -289,14 +305,7 @@ function assemble_3rdparty()
 
 		[ -n "${tarball}" ] || fatal "${package} : Could not find source tarball for ${srcpackage}"
 
-		
-		case "${package}" in
-			grafana)
-				process_3rdparty_tarball "${package}" "${tarball}" "grafana-yarn.lock" "yarn.lock" ;
-				sasstarball=$(find "${tmp_dir}/rpmbuild/SOURCES/" -maxdepth 1 -type f -iname "node-sass-*.tar.gz" | head -1) ;
-				process_3rdparty_tarball "node-sass" "${sasstarball}" "node-sass-package-lock.json" "package-lock.json" ;;
-			*) process_3rdparty_tarball "${package}" "${tarball}" ;;
-		esac
+		process_3rdparty_tarball "${package}" "${tarball}"
 	)
 }
 

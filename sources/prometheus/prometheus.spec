@@ -228,7 +228,7 @@ export GOPATH=$(pwd):$(pwd)/Godeps/_workspace:%{gopath}
 
 # set environment variables
 export GO_VERSION=$(go version | cut -d' ' -f3 | sed 's/go//')
-export BUILDDATE=$(date +%Y%m%d-%H:%M:%S)
+export BUILDDATE=$(date +%%Y%%m%%d-%%H:%%M:%%S)
 
 # build prometheus
 export OLD_LDFLAGS="$OLD_LDFLAGS -X github.com/prometheus/prometheus/vendor/github.com/prometheus/common/version.Branch=v%{version} "

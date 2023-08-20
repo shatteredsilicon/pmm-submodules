@@ -1,4 +1,4 @@
-FROM almalinux:8.8-minimal
+FROM rockylinux:9.2-minimal
 
 EXPOSE 80 443
 
