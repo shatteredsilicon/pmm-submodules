@@ -4,6 +4,9 @@ EXPOSE 80 443
 
 WORKDIR /opt
 
+# exclude MariaDB in appstream repo
+RUN sed -i "/\[appstream\]/a exclude=mariadb*,galera*,boost-program-options" /etc/yum.repos.d/rocky.repo
+
 RUN microdnf -y update && \
     microdnf -y install epel-release && \
     microdnf -y install --nodocs --noplugins --best shadow-utils rkhunter && \

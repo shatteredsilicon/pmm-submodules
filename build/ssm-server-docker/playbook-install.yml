@@ -11,8 +11,8 @@
         content: |
           [ssm]
           name=SSM repo
-          baseurl=https://dl.shatteredsilicon.net/$releasever/ssm/RPMS/$basearch/
-          gpgkey=https://dl.shatteredsilicon.net/$releasever/ssm/RPM-GPG-KEY-SSM-EL8
+          baseurl=https://dl.shatteredsilicon.net/ssm/$releasever/RPMS/$basearch/
+          gpgkey=https://dl.shatteredsilicon.net/ssm/$releasever/RPM-GPG-KEY-SSM-EL$releasever
           gpgcheck=1
           enabled=0
 
@@ -106,8 +106,10 @@
         - ssm-managed
         - rds_exporter
         - snmp_exporter
-        - mariadb
-        - mariadb-server
+
+    - name: SSM                        | Install MariaDB 10.4
+      when: ansible_os_family == 'RedHat'
+      shell: microdnf -y --enablerepo ssm install --nodocs --noplugins --best MariaDB-server MariaDB-client
 
     - name: NGINX SSL Certificate      | Add script
       copy:
