@@ -1,0 +1,5 @@
+#!/bin/bash
+
+cd ~builder/work/ssm-doc
+pip install -r requirements.txt
+mkdocs build

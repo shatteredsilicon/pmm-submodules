@@ -1,0 +1,11 @@
+#!/bin/bash
+
+set -o errexit
+set -o xtrace
+umask 0000
+
+. $(dirname $0)/vars
+
+echo "Building docbuild image as ${docbuild_docker_image}"
+
+docker build -t "${docbuild_docker_image}" "${root_dir}/build/docbuild-docker"

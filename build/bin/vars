@@ -34,6 +34,10 @@ logs_dir=${root_dir}/logs
 docs_dir=${root_dir}/docs
 audit_dir="${result_dir}/audit"
 buildlog_dir="${result_dir}/buildlogs"
+docbuild_docker_name="${DOCBUILD_DOCKER_NAME:-shatteredsilicon/docbuild}"
+docbuild_docker_tag="${DOCBUILD_DOCKER_TAG:-latest}"
+docbuild_docker_image="${DOCBUILD_DOCKER_IMAGE:-${docbuild_docker_name}:${docbuild_docker_tag}}"
+
 rpmbuild_docker_name="${RPMBUILD_DOCKER_NAME:-shatteredsilicon/rpmbuild}"
 rpmbuild_docker_tag="${RPMBUILD_DOCKER_TAG:-latest}"
 rpmbuild_docker_image="${RPMBUILD_DOCKER_IMAGE:-${rpmbuild_docker_name}:${rpmbuild_docker_tag}}"

@@ -66,3 +66,6 @@
 	path = sources/snmp_exporter
 	url = https://github.com/shatteredsilicon/snmp_exporter
 	branch = ssm-1.x
+[submodule "ssm-doc"]
+	path = ssm-doc
+	url = git@github.com:shatteredsilicon/ssm-doc.git
