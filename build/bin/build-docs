@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -o errexit
+set -o xtrace
+umask 0000
+
+. $(dirname $0)/vars
+
+docker run --rm -it -v ${root_dir}:/home/builder/work --tmpfs '/tmp' --env RUNAS="$(id -u)" "${docbuild_docker_image}"

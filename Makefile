@@ -17,6 +17,9 @@ debs: submodules
 sdebs: submodules
 	./build/bin/build-sdebs $(packages)
 
+docs: submodules
+	./build/bin/build-docs
+
 server: submodules
 	./build/bin/build-server
 
@@ -25,6 +28,9 @@ rpmbuild-docker: submodules
 
 debbuild-docker: submodules
 	./build/bin/build-debbuild-docker
+
+docbuild-docker: submodules
+	./build/bin/build-docbuild-docker
 
 show-vulnerabilities:
 	./build/bin/show-vulnerabilities
