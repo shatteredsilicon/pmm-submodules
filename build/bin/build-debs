@@ -43,13 +43,13 @@ build_debsold() {
         umask 0000
 
         echo 'deb http://deb.debian.org/debian bullseye-backports main' > /etc/apt/sources.list.d/bullseye-backports.list
-        apt update && apt install -y golang-1.17 && \
+        apt update && apt install -y golang-1.19 && \
             rm /etc/apt/sources.list.d/bullseye-backports.list && \
             apt update && apt install -y git rsync build-essential devscripts
         useradd builder -u 1000 -m -G users,wheel && \
             chmod 755 /home/builder && su - builder
-        export GOROOT=/usr/lib/go-1.17 && export GOPATH=/home/builder/go &&
-            PATH=/usr/lib/go-1.17/bin:\${GOPATH}/bin:\$PATH
+        export GOROOT=/usr/lib/go-1.19 && export GOPATH=/home/builder/go &&
+            PATH=/usr/lib/go-1.19/bin:\${GOPATH}/bin:\$PATH
         mkdir -p \${GOPATH}/src/github.com/golang && \
             ln -s /home/builder/ssm-submodules/build/rpmbuild-docker/dep \${GOPATH}/src/github.com/golang/
         GO111MODULE=off go install -ldflags=\"-X main.version=v0.5.4\" \${GOPATH}/src/github.com/golang/dep/cmd/dep

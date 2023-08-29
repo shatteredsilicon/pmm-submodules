@@ -79,7 +79,12 @@ build_ssm_client_tarball() {
 
                 pushd ${package_path}
                     rm -rf vendor
-                    { GO111MODULE=off dep ensure; tar -C $(dirname ${package_path}) -czf ${dest_dir}/${sub_package}-${tag}.tar.gz $(basename ${package_path}); } & pids+=($!)
+                    if [ -f ./go.mod ]
+                    then
+                        { GO111MODULE=on go mod vendor; tar -C $(dirname ${package_path}) -czf ${dest_dir}/${sub_package}-${tag}.tar.gz $(basename ${package_path}); } & pids+=($!)
+                    else
+                        { GO111MODULE=off dep ensure; tar -C $(dirname ${package_path}) -czf ${dest_dir}/${sub_package}-${tag}.tar.gz $(basename ${package_path}); } & pids+=($!)
+                    fi
                 popd
             fi
         popd
@@ -87,6 +92,9 @@ build_ssm_client_tarball() {
     for pid in ${pids[@]}; do
         wait ${pid}
     done
+    # some of the go mod downloaded modules are write-protected,
+    # make them writable first before trying to remove them
+    chmod -R 0700 ${tmp_dir}/deb-go
     rm -rf ${tmp_dir}/deb-go
 }
 
