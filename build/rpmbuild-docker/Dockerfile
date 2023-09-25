@@ -7,7 +7,7 @@ RUN dnf module enable -y nodejs:18
 RUN yum -y --allowerasing install nodejs yum-utils rpmdevtools createrepo_c mock git golang \
         jq make gcc-c++ rsync rkhunter coreutils
 
-RUN npm uninstall -g yarn pnpm && npm install -g npm@latest corepack
+RUN npm uninstall -g yarn pnpm && npm install -g corepack
 
 RUN useradd builder -u 1000 -m -G users,wheel,mock && \
     chmod 755 /home/builder
