@@ -18,6 +18,8 @@ URL:            https://percona.com
 Source0:        https://%{import_path}/archive/%{percona_toolkit_version}/%{repo}-%{percona_toolkit_version}.tar.gz
 BuildRequires:  golang
 
+Requires: perl-DBI, perl-DBD-MySQL, MariaDB-shared
+
 %description
 Percona Toolkit (SSM Minimal)
 
@@ -33,6 +35,7 @@ go build -ldflags="-s -w" ./src/go/pt-mongodb-summary
 %{__cp} bin/pt-mysql-summary %{_GOPATH}/bin
 %{__cp} bin/pt-summary %{_GOPATH}/bin
 %{__cp} bin/pt-visual-explain %{_GOPATH}/bin
+%{__cp} bin/pt-archiver %{_GOPATH}/bin
 
 strip %{_GOPATH}/bin/* || true
 
@@ -42,6 +45,7 @@ install -m 0755 %{_GOPATH}/bin/pt-summary $RPM_BUILD_ROOT/usr/bin/
 install -m 0755 %{_GOPATH}/bin/pt-mysql-summary $RPM_BUILD_ROOT/usr/bin/
 install -m 0755 %{_GOPATH}/bin/pt-mongodb-summary $RPM_BUILD_ROOT/usr/bin/
 install -m 0755 %{_GOPATH}/bin/pt-visual-explain $RPM_BUILD_ROOT/usr/bin/
+install -m 0755 %{_GOPATH}/bin/pt-archiver $RPM_BUILD_ROOT/usr/bin/
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -53,6 +57,7 @@ if [ "$1" = "0" ]; then
     rm -f /usr/bin/pt-mysql-summary
     rm -f /usr/bin/pt-mongodb-summary
     rm -f /usr/bin/pt-visual-explain
+    rm -f /usr/bin/pt-archiver
     echo "Uninstall complete."
 fi
 
@@ -61,3 +66,4 @@ fi
 /usr/bin/pt-mysql-summary
 /usr/bin/pt-mongodb-summary
 /usr/bin/pt-visual-explain
+/usr/bin/pt-archiver
