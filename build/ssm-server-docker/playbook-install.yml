@@ -89,7 +89,7 @@
 
     - name: SSM                        | Install RPMs
       when: ansible_os_family == 'RedHat'
-      shell: microdnf -y --enablerepo local install --nodocs --noplugins --best {{ item }}
+      shell: microdnf -y --enablerepo local --enablerepo ssm install --nodocs --noplugins --best {{ item }}
       with_items:
         - nginx
         - consul
