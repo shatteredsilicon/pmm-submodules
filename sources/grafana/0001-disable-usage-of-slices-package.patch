@@ -1,0 +1,39 @@
+From a4b8377746ee9d0d5ccd5ca51e489e77d6663fdb Mon Sep 17 00:00:00 2001
+From: Jason <oblitorum@gmail.com>
+Date: Mon, 11 Dec 2023 07:31:26 +0800
+Subject: [PATCH] Disable usage of "slices" package
+
+---
+ pkg/services/ngalert/models/testing.go | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/pkg/services/ngalert/models/testing.go b/pkg/services/ngalert/models/testing.go
+index 280dfa3026..0186354ace 100644
+--- a/pkg/services/ngalert/models/testing.go
++++ b/pkg/services/ngalert/models/testing.go
+@@ -4,7 +4,6 @@ import (
+ 	"encoding/json"
+ 	"fmt"
+ 	"math/rand"
+-	"slices"
+ 	"sync"
+ 	"time"
+ 
+@@ -163,7 +162,13 @@ func WithUniqueOrgID() AlertRuleMutator {
+ func WithNamespaceUIDNotIn(exclude ...string) AlertRuleMutator {
+ 	return func(rule *AlertRule) {
+ 		for {
+-			if !slices.Contains(exclude, rule.NamespaceUID) {
++			contain := false
++			for _, e := range exclude {
++				if e == rule.NamespaceUID {
++					contain = true
++				}
++			}
++			if !contain {
+ 				return
+ 			}
+ 			rule.NamespaceUID = uuid.NewString()
+-- 
+2.25.1
+
