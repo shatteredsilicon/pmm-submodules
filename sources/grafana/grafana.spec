@@ -18,7 +18,7 @@ end}
 
 %global gomodulesmode               GO111MODULE=auto
 %global gotestflags                 %{gotestflags} -tags=integration
-%global esbuild_version             0.16.17
+%global esbuild_version             0.17.19
 %global x_sys_version               c0bba94
 %global google_wire_version         0.5.0
 %global google_subcommands_version  1.2.0
@@ -29,7 +29,7 @@ end}
 %global x_xerrors_version           5ec99f8
 
 Name:             grafana
-Version:          9.5.7
+Version:          10.2.2
 Release:          3%{?dist}
 Summary:          Metrics dashboard and graph editor
 License:          AGPLv3
@@ -71,7 +71,7 @@ Source10:         grafana.sysusers
 # Source11 contains configs for grafana
 Source11:         grafana.ini
 
-Patch1:           0001-disable-jest-tests.patch
+Patch1:           0001-disable-usage-of-slices-package.patch
 
 # Intersection of go_arches and nodejs_arches
 ExclusiveArch:    %{grafana_arches}
@@ -748,11 +748,11 @@ pushd %{_builddir}/%{name}-%{version}
   # can be removed in a future Go release
   export GOEXPERIMENT=boringcrypto
   # see grafana-X.Y.Z/pkg/build/cmd.go
-  export LDFLAGS="-X main.version=%{version} -X main.buildstamp=${SOURCE_DATE_EPOCH}"
+  export LDFLAGS="-s -w -X main.version=%{version} -X main.buildstamp=${SOURCE_DATE_EPOCH}"
 
   %{_builddir}/bin/wire gen -tags oss ./pkg/server ./pkg/cmd/grafana-cli/runner
-  %gobuild -o %{_builddir}/bin/grafana ./pkg/cmd/grafana
-  %gobuild -o %{_builddir}/bin/grafana-server ./pkg/cmd/grafana-server
+  go build -ldflags "${LDFLAGS:-}" -o %{_builddir}/bin/grafana ./pkg/cmd/grafana
+  go build -ldflags "${LDFLAGS:-}" -o %{_builddir}/bin/grafana-server ./pkg/cmd/grafana-server
 popd
 
 %install
@@ -874,6 +874,9 @@ chmod 640 %{_sysconfdir}/%{name}/ldap.toml
 
 
 %changelog
+* Mon Dec 11 2023 Jason Ng <oblitorum@gmail.com> 10.2.2-3
+- Update Grafana to 10.2.2
+
 * Fri Aug 04 2023 Jason Ng <oblitorum@gmail.com> 9.5.7-3
 - Make it fit into SSM
 - Update Grafana to 9.5.7
