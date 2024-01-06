@@ -47,7 +47,7 @@ build() {
     done
 
     local image_id_file=${tmp_dir}/ssm-server-image-id
-    docker build --squash --no-cache --build-arg ssm_version=${ssm_version} --iidfile ${image_id_file} ${server_build_dir}/
+    DOCKER_BUILDKIT=1 docker build --no-cache --build-arg ssm_version=${ssm_version} --iidfile ${image_id_file} ${server_build_dir}/
     local image_id=$(cat ${image_id_file})
 
     # use clamd@scan service to scan the docker image

@@ -1,4 +1,4 @@
-FROM rockylinux:9.2-minimal
+FROM rockylinux:9.2-minimal AS builder
 
 EXPOSE 80 443
 
@@ -32,5 +32,9 @@ RUN cp /usr/share/ssm-server/entrypoint.sh /opt/entrypoint.sh
 RUN find / -type f ! -path "/proc/*" ! -path "/dev/*" ! -path "/sys/*" ! -path "/var/lib/mysql/*" ! -path "/var/lib/rkhunter/*" ! -path "/var/lib/grafana/*" ! -path "/var/log/*" ! -path "/root/*" ! -path "/home/*" ! -path "/tmp/*" ! -path "/opt/prometheus/*" ! -path "/run/*.pid" ! -path "/usr/lib/fontconfig/cache/*" ! -path "/var/lib/dnf/*" ! -path "/var/lib/rpm/*" ! -path "/var/spool/mail/*" ! -path "/usr/share/mime/*" | xargs -n1 -I {} sh -c "rpm -qf '{}' | grep -oP '(?<=file ).*(?= is not owned by any package)' >> /var/log/ssm-server-orphan-files.log || true"
 RUN rpm -qa | xargs -n1 -I {} sh -c "rpm --verify '{}' >> /var/log/ssm-server-rpm-verify.log || true"
 RUN rkhunter --propupd uname && (rkhunter --check --novl --rwo --noappend-log --ns --disable system_configs_syslog --disable avail_modules --disable passwd_changes --disable group_changes > /var/log/ssm-server-rkhunter.log || true)
+
+FROM scratch
+
+COPY --from=builder / /
 
 CMD ["/opt/entrypoint.sh"]
