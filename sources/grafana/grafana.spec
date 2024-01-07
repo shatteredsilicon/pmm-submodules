@@ -29,7 +29,7 @@ end}
 %global x_xerrors_version           5ec99f8
 
 Name:             grafana
-Version:          10.2.2
+Version:          10.2.3
 Release:          3%{?dist}
 Summary:          Metrics dashboard and graph editor
 License:          AGPLv3
@@ -72,6 +72,8 @@ Source10:         grafana.sysusers
 Source11:         grafana.ini
 
 Patch1:           0001-disable-usage-of-slices-package.patch
+
+Patch2:           0001-add-missing-packages-to-vendor.patch
 
 # Intersection of go_arches and nodejs_arches
 ExclusiveArch:    %{grafana_arches}
@@ -693,6 +695,7 @@ Graphite, InfluxDB & OpenTSDB.
 %setup -q -T -D -b 9
 
 %patch1 -p1
+%patch2 -p1
 
 %build
 mkdir %{_builddir}/bin
