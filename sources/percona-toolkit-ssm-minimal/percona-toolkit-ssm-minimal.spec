@@ -6,7 +6,7 @@
 %global project                 percona
 %global repo                    percona-toolkit
 %global import_path             %{provider}.%{provider_tld}/%{project}/%{repo}
-%global percona_toolkit_version 3.5.1
+%global percona_toolkit_version 3.5.7
 
 Name:           %{repo}-ssm-minimal
 Summary:        Percona Toolkit (SSM Minimal)
@@ -15,7 +15,7 @@ Release:        1%{?dist}
 License:        GPL-2.0
 Vendor:         Percona LLC
 URL:            https://percona.com
-Source0:        https://%{import_path}/archive/%{percona_toolkit_version}/%{repo}-%{percona_toolkit_version}.tar.gz
+Source0:        https://%{import_path}/archive/v%{percona_toolkit_version}/%{repo}-v%{percona_toolkit_version}.tar.gz
 BuildRequires:  golang
 
 Requires: perl-DBI, perl-DBD-MySQL, MariaDB-shared
