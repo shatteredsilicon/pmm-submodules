@@ -136,7 +136,7 @@ function build_generic_tarball()
 		(
 			cd "${pkgroot}/${workdir}"
 			trace "${package} : Pulling go modules in $(pwd)"
-			(GO111MODULE=on go mod tidy && GO111MODULE=on go mod vendor ) || fatal "${package} : go mod failed"
+			GO111MODULE=on go mod vendor || fatal "${package} : go mod failed"
 			trace "${package} : Auditing go modules"
 			GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json ${NANCY_CACHE:+-d "${NANCY_CACHE}"} > "${auditto}/${package}.json" || warn "${package} : Audit error"
 		)
