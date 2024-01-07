@@ -1,4 +1,4 @@
-FROM rockylinux:9.2-minimal
+FROM rockylinux:9.3-minimal
 
 RUN microdnf -y update && \
     microdnf -y install yum

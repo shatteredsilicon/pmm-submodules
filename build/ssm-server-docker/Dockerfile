@@ -1,4 +1,4 @@
-FROM rockylinux:9.2-minimal AS builder
+FROM rockylinux:9.3-minimal AS builder
 
 EXPOSE 80 443
 
