@@ -36,3 +36,5 @@
 /usr/bin/expr
 /usr/bin/cut
 /usr/bin/wc
+/usr/bin/chown
+/usr/bin/mv
