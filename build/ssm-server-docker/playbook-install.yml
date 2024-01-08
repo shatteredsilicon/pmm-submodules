@@ -204,6 +204,21 @@
         option: external_snapshot_name
         value: Share with Shattered Silicon
 
+    - name: Grafana                    | Set plugins
+      when: not grafana_db.stat.exists
+      community.general.ini_file:
+        path: /etc/grafana/grafana.ini
+        section: plugins
+        option: allow_loading_unsigned_plugins
+        value: pmm-app,pmm-add-instance-app-panel,pmm-qan-app-panel,pmm-qan-settings-app-panel,pmm-remote-instances-panel,pmm-singlestat-panel,pmm-system-summary-app-panel,pmm-update-panel,ssm-filtertable-panel
+
+    - name: Grafana                    | Set DATA_DIR
+      when: not grafana_db.stat.exists
+      community.general.ini_file:
+        path: /etc/sysconfig/grafana-server
+        option: DATA_DIR
+        value: /srv/grafana
+
     - name: supervisor                 | Fix credentials
       community.general.ini_file:
         path: /etc/supervisord.conf
