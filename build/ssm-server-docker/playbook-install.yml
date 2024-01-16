@@ -109,7 +109,7 @@
 
     - name: SSM                        | Install MariaDB 10.4
       when: ansible_os_family == 'RedHat'
-      shell: microdnf -y --enablerepo ssm install --nodocs --noplugins --best MariaDB-server MariaDB-client
+      shell: microdnf -y --enablerepo local --enablerepo ssm install --nodocs --noplugins --best MariaDB-server MariaDB-client
 
     - name: NGINX SSL Certificate      | Add script
       copy:

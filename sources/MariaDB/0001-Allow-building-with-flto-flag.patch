@@ -1,0 +1,29 @@
+From c1806b9e168d7ebad164bfa5337c57742f3ae3d7 Mon Sep 17 00:00:00 2001
+From: Jason <oblitorum@gmail.com>
+Date: Fri, 19 Jan 2024 23:28:52 +0800
+Subject: [PATCH] Allow building with '-flto' flag
+
+---
+ cmake/libutils.cmake | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/cmake/libutils.cmake b/cmake/libutils.cmake
+index 0f8786fc264..6e81a445589 100644
+--- a/cmake/libutils.cmake
++++ b/cmake/libutils.cmake
+@@ -89,9 +89,9 @@ MACRO(CREATE_EXPORTS_FILE VAR TARGET API_FUNCTIONS)
+     CONFIGURE_FILE_CONTENT(${CONTENT} ${EXPORTS})
+     # Avoid "function redeclared as variable" error
+     # when using gcc/clang option -flto(link time optimization)
+-    IF(" ${CMAKE_C_FLAGS} ${CMAKE_CXX_FLAGS} " MATCHES " -flto")
+-      SET_SOURCE_FILES_PROPERTIES(${EXPORTS} PROPERTIES COMPILE_FLAGS "-fno-lto")
+-    ENDIF()
++    # IF(" ${CMAKE_C_FLAGS} ${CMAKE_CXX_FLAGS} " MATCHES " -flto")
++    #   SET_SOURCE_FILES_PROPERTIES(${EXPORTS} PROPERTIES COMPILE_FLAGS "-fno-lto")
++    # ENDIF()
+     SET(${VAR} ${EXPORTS})
+   ENDIF()
+ ENDMACRO()
+-- 
+2.25.1
+
