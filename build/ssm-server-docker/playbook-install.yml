@@ -99,7 +99,6 @@
         - consul
         - grafana
         - prometheus
-        - orchestrator
         - ssm-qan-api
         - ssm-qan-app
         - percona-toolkit-ssm-minimal

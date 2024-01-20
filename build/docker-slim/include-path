@@ -2,7 +2,6 @@
 /usr/share/ssm-dashboards
 /usr/share/ssm-qan-app
 /usr/share/ssm-server
-/usr/share/orchestrator
 /usr/share/prometheus
 /usr/share/grafana
 /usr/share/snmp
