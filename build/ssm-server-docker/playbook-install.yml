@@ -24,6 +24,10 @@
         - logrotate
         - python3-pip
         - cronie
+        - yum-utils
+
+    - name: Packages                   | Add hashicorp repo
+      shell: yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 
     - name: cloud-init                 | Create dirs
       file: path={{ item }} state=directory

@@ -128,7 +128,7 @@
         state: absent
 
     - name: SSM                        | Remove OS tools
-      shell: microdnf -y remove python3-pip
+      shell: microdnf -y remove python3-pip yum-utils
 
     - name: SSM                        | Cleanup yum cache
       shell: microdnf clean all
