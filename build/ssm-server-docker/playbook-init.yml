@@ -107,17 +107,6 @@
         - /srv/update
 
     - name: SSM                        | Stop services
-      shell: supervisorctl restart orchestrator
-
-    - name: SSM                        | Wait for orchestrator
-      wait_for:
-        host: 127.0.0.1
-        port: 4000
-        state: present
-        delay: 10
-        timeout: 180
-
-    - name: SSM                        | Stop services
       shell: supervisorctl shutdown
 
     - name: SSM                    | Remove Python Modules
@@ -128,7 +117,7 @@
         state: absent
 
     - name: SSM                        | Remove OS tools
-      shell: microdnf -y remove python3-pip
+      shell: microdnf -y remove python3-pip yum-utils
 
     - name: SSM                        | Cleanup yum cache
       shell: microdnf clean all
@@ -143,7 +132,6 @@
         - /var/log/mysql.log
         - /var/log/nginx.log
         - /var/log/node_exporter.log
-        - /var/log/orchestrator.log
         - /var/log/prometheus.log
         - /var/log/qan-api.log
         - /var/log/yum.log

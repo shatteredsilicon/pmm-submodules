@@ -24,6 +24,10 @@
         - logrotate
         - python3-pip
         - cronie
+        - yum-utils
+
+    - name: Packages                   | Add hashicorp repo
+      shell: yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 
     - name: cloud-init                 | Create dirs
       file: path={{ item }} state=directory
@@ -95,7 +99,6 @@
         - consul
         - grafana
         - prometheus
-        - orchestrator
         - ssm-qan-api
         - ssm-qan-app
         - percona-toolkit-ssm-minimal
@@ -109,7 +112,7 @@
 
     - name: SSM                        | Install MariaDB 10.4
       when: ansible_os_family == 'RedHat'
-      shell: microdnf -y --enablerepo ssm install --nodocs --noplugins --best MariaDB-server MariaDB-client
+      shell: microdnf -y --enablerepo local --enablerepo ssm install --nodocs --noplugins --best MariaDB-server MariaDB-client
 
     - name: NGINX SSL Certificate      | Add script
       copy:
@@ -203,6 +206,21 @@
         section: snapshots
         option: external_snapshot_name
         value: Share with Shattered Silicon
+
+    - name: Grafana                    | Set plugins
+      when: not grafana_db.stat.exists
+      community.general.ini_file:
+        path: /etc/grafana/grafana.ini
+        section: plugins
+        option: allow_loading_unsigned_plugins
+        value: pmm-app,pmm-add-instance-app-panel,pmm-qan-app-panel,pmm-qan-settings-app-panel,pmm-remote-instances-panel,pmm-singlestat-panel,pmm-system-summary-app-panel,pmm-update-panel,ssm-filtertable-panel
+
+    - name: Grafana                    | Set DATA_DIR
+      when: not grafana_db.stat.exists
+      community.general.ini_file:
+        path: /etc/sysconfig/grafana-server
+        option: DATA_DIR
+        value: /srv/grafana
 
     - name: supervisor                 | Fix credentials
       community.general.ini_file:

@@ -1,8 +1,4 @@
-FROM rockylinux:9.2-minimal AS builder
-
-EXPOSE 80 443
-
-WORKDIR /opt
+FROM rockylinux:9.3-minimal AS builder
 
 # exclude MariaDB in appstream repo
 RUN sed -i "/\[appstream\]/a exclude=mariadb*,galera*,boost-program-options" /etc/yum.repos.d/rocky.repo
@@ -34,6 +30,10 @@ RUN rpm -qa | xargs -n1 -I {} sh -c "rpm --verify '{}' >> /var/log/ssm-server-rp
 RUN rkhunter --propupd uname && (rkhunter --check --novl --rwo --noappend-log --ns --disable system_configs_syslog --disable avail_modules --disable passwd_changes --disable group_changes > /var/log/ssm-server-rkhunter.log || true)
 
 FROM scratch
+
+EXPOSE 80 443
+
+WORKDIR /opt
 
 COPY --from=builder / /
 

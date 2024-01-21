@@ -136,7 +136,7 @@ function build_generic_tarball()
 		(
 			cd "${pkgroot}/${workdir}"
 			trace "${package} : Pulling go modules in $(pwd)"
-			(GO111MODULE=on go mod tidy && GO111MODULE=on go mod vendor ) || fatal "${package} : go mod failed"
+			GO111MODULE=on go mod vendor || fatal "${package} : go mod failed"
 			trace "${package} : Auditing go modules"
 			GO111MODULE=on go list -json -deps ./... | nancy sleuth -o json ${NANCY_CACHE:+-d "${NANCY_CACHE}"} > "${auditto}/${package}.json" || warn "${package} : Audit error"
 		)
@@ -154,12 +154,7 @@ function build_generic_tarball()
 			cd "${pkgroot}/${workdir}"
 			trace "${package} : Pulling yarn deps in $(pwd)"
 
-			if [ "$package" == "grafana" ]
-			then
-				YARN_CACHE_FOLDER="${pkgroot}/${workdir:+$workdir/}.yarn/cache" YARN_CHECKSUM_BEHAVIOR=update yarn install --mode "skip-build" --network-timeout 300000 || fatal "${package} : yarn failed"
-			else
-				yarn --no-progress --emoji false --ignore-scripts --network-timeout 300000 || fatal "${package} : yarn failed"
-			fi
+			yarn --no-progress --emoji false --ignore-scripts --network-timeout 300000 || fatal "${package} : yarn failed"
 
 			trace "${package} : Auditing with Yarn"
 			# Yarn audit returns failure if any issue are found, so just check the report file is created

@@ -1,0 +1,25 @@
+From 6aef3e1eb218842db2973bdd82a8a990d13614de Mon Sep 17 00:00:00 2001
+From: Jason <oblitorum@gmail.com>
+Date: Fri, 12 Jan 2024 01:35:30 +0800
+Subject: [PATCH] Ignore RPM Requires 'libimf' for Intel compiler
+
+---
+ cmake/cpack_rpm.cmake | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/cmake/cpack_rpm.cmake b/cmake/cpack_rpm.cmake
+index 2cddd9ecea8..90276ad80b9 100644
+--- a/cmake/cpack_rpm.cmake
++++ b/cmake/cpack_rpm.cmake
+@@ -112,7 +112,7 @@ SET(CPACK_RPM_SPEC_MORE_DEFINE "
+ %filter_provides_in \\\\.\\\\(test\\\\|result\\\\|h\\\\|cc\\\\|c\\\\|inc\\\\|opt\\\\|ic\\\\|cnf\\\\|rdiff\\\\|cpp\\\\)$
+ %filter_requires_in \\\\.\\\\(test\\\\|result\\\\|h\\\\|cc\\\\|c\\\\|inc\\\\|opt\\\\|ic\\\\|cnf\\\\|rdiff\\\\|cpp\\\\)$
+ %filter_from_provides /perl(\\\\(mtr\\\\|My::\\\\)/d
+-%filter_from_requires /\\\\(lib\\\\(ft\\\\|lzma\\\\|tokuportability\\\\)\\\\)\\\\|\\\\(perl(\\\\(.*mtr\\\\|My::\\\\|.*HandlerSocket\\\\|Mysql\\\\)\\\\)/d
++%filter_from_requires /\\\\(lib\\\\(ft\\\\|lzma\\\\|tokuportability\\\\|imf\\\\)\\\\)\\\\|\\\\(perl(\\\\(.*mtr\\\\|My::\\\\|.*HandlerSocket\\\\|Mysql\\\\)\\\\)/d
+ %filter_setup
+ }
+ ")
+-- 
+2.25.1
+

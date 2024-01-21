@@ -8,5 +8,7 @@ consul
 crond
 mysql
 mysqldump
+mariadb-upgrade
+mysqlcheck
 rds_exporter
 supervisord

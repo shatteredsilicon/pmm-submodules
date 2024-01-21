@@ -2,7 +2,6 @@
 /usr/share/ssm-dashboards
 /usr/share/ssm-qan-app
 /usr/share/ssm-server
-/usr/share/orchestrator
 /usr/share/prometheus
 /usr/share/grafana
 /usr/share/snmp
@@ -36,3 +35,5 @@
 /usr/bin/expr
 /usr/bin/cut
 /usr/bin/wc
+/usr/bin/chown
+/usr/bin/mv
