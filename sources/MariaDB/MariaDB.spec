@@ -94,11 +94,12 @@ mv -fT wolfssl-%{wolfssl_commit}* server-mariadb-%{version}/extra/wolfssl/wolfss
 %build
 mkdir cpack_rpm_build_dir
 cd cpack_rpm_build_dir
-export CPPFLAGS='-ffunction-sections -fdata-sections -Wl,--gc-sections -Wno-unused-command-line-argument -fuse-ld=lld'
+export CPPFLAGS='-ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--strip-all -Wno-unused-command-line-argument -fuse-ld=lld'
 export LDFLAGS='-Wl,--gc-sections -Wl,--strip-all'
 
 %ifarch x86_64
-export CPPFLAGS="${CPPFLAGS} -qopt-dynamic-align -static-intel -vec -fslp-vectorize -fvec-peel-loops -fwhole-program-vtables -march=corei7 -mtune=corei7 -flto"
+export CPPFLAGS="${CPPFLAGS} -qopt-dynamic-align -static-intel -vec -fslp-vectorize -fvec-peel-loops -fwhole-program-vtables -march=x86-64-v2 -mtune=westmere -msse4.2 -flto"
+export LDFLAGS="${LDFLAGS} -static-intel"
 source /opt/intel/oneapi/setvars.sh
 %endif
 
@@ -117,6 +118,7 @@ source /opt/intel/oneapi/setvars.sh
                   -DCMAKE_CXX_FLAGS="$CPPFLAGS" \
                   -DCMAKE_EXE_LINKER_FLAGS="-ltcmalloc_minimal $LD_FLAGS" \
                   -DBUILD_CONFIG=mysql_release \
+                  -DWITH_EMBEDDED_SERVER=no \
                   -DWITH_SAFEMALLOC=OFF \
                   -DWITH_SSL=bundled \
                   -DWITH_JEMALLOC=no \
