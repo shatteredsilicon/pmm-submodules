@@ -23,38 +23,75 @@ EOF
 
 build_rpm() {
     local package=$1
-    local version=${2##v}
+    local srpm_filepath="$2"
+    local result_dir=${3:-"${tmp_dir}/mock/${package}"}
     local arch=$(rpm --eval "%{_arch}")
     local result_dir="${tmp_dir}/mock/${package}"
-    local srpm_prefix="${package}${version:+-$version}"
 
     mkdir -p "${result_dir}"
-    mock -r ssm-9-${arch} -n --resultdir ${result_dir} --rebuild ${srpm_dir}/${srpm_prefix}*.src.rpm
+    rm -f "${result_dir}/${package}*.rpm"
+    mock -r ssm-9-${arch} -n --resultdir ${result_dir} --rebuild "${srpm_filepath}"
+    rm -f "${rpm_dir}/${package}*.rpm"
     mv ${result_dir}/${package}*.${arch}.rpm ${rpm_dir}/
 }
 
 create_rpm() {
     local package=$1
-    local version=
 
-    mkdir -p ${srpm_dir} ${rpm_dir}
+    mkdir -p ${srpm_dir} ${rpm_dir} ${record_dir}
 
-    #TODO: Arange a blackboard file to pass in the correct srpm filenames
-    srpm_filename=$(ls ${srpm_dir}/${package}*.src.rpm | tail -1)
-    if [ -z "${srpm_filename}" ]
+    srpm_filepath="$(echo "${srpm_records[${package}]}" | cut -d',' -f1)"
+    if [ -z "${srpm_filepath}" ] || [ ! -f "${srpm_filepath}" ]
     then
-	echo "Failed to find srpm for ${package}. Failing" 1>&2
-	exit -1
+        echo "${package} : Failed to find srpm for ${package}. Failing" 1>&2
+        exit -1
     fi
-    rpm_filename="$(rpmquery "${srpm_filename}").rpm"
 
-    if [ -f "${rpm_dir}/${rpm_filename}" ]; then
-        echo "${rpm_filename} exists, skipped"
+    built_filepaths="$(echo "${rpm_records[${package}]}" | cut -d',' -f1)"
+    built_revision="$(echo "${rpm_records[${package}]}" | cut -d',' -f2)"
+    cd "${submodule_dir}/${package}"
+    if [ -r "${submodule_dir}/${package}/.git" ]
+    then
+        current_revision="$(git rev-parse --short  HEAD)"
+        [ ! -z "$current_revision" ] || fatal "${package} : Can't not get git commit id of ${package}"
+    else
+        [ -f "${package}.spec" ] || fatal "${package} : No spec file found for ${package}"
+        current_revision="$(rpm -q --qf '%{version}-%{release}' --specfile ${package}.spec)"
+    fi
+
+    all_exist=0
+    for path in ${built_filepaths//:/ }
+    do
+        all_exist=1
+        if [ ! -f "$path" ]
+        then
+            all_exist=0
+            break
+        fi
+    done
+    if [ "$built_revision" = "$current_revision" ] && [ "$all_exist" -gt "0" ]
+    then
+        echo "${package}: RPM of revision '$current_revision' already built, skipped."
         return
     fi
 
-    rm -f ${rpm_dir}/${package}*
-    build_rpm $package $version
+    result_dir="${tmp_dir}/mock/${package}"
+    build_rpm "$package" "$srpm_filepath" "$result_dir"
+
+    printf -v rpm_filepaths '%s:' $(ls ${rpm_dir}/${package}*.rpm)
+    rpm_records[$package]="${rpm_filepaths%%:},${current_revision}"
+
+    record_content=
+    for k in "${!rpm_records[@]}"
+    do
+        if [ -z "${record_content}" ]
+		then
+			record_content="${k},${rpm_records[${k}]}"
+		else
+			record_content="${record_content}"$'\n'"${k},${rpm_records[${k}]}"
+		fi
+    done
+    echo "$record_content" > "${rpm_record_file}"
 }
 
 check_commands() {
@@ -89,10 +126,10 @@ main() {
     then
 		for package in "${packages[@]}"
 		do
-			create_rpm "$package" |& tee "${buildlog_dir}/${package}.rpm.log"
+			create_rpm "$package" &> >(tee "${buildlog_dir}/${package}.rpm.log")
 		done
     else
-	    create_rpm $package |& tee "${buildlog_dir}/${package}.rpm.log"
+	    create_rpm $package &> >(tee "${buildlog_dir}/${package}.rpm.log")
     fi
 }
 

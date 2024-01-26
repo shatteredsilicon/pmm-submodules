@@ -30,6 +30,28 @@ build_sdeb() {
         exit 1
     fi
 
+    cd "${submodule_dir}/${package}"
+    current_revision="$(git rev-parse --short  HEAD)"
+	[ ! -z "$current_revision" ] || fatal "${package} : Can't not get git commit id of ${package}"
+    built_filepaths="$(echo ${sdeb_records[$package]} | cut -d',' -f1)"
+	built_revision="$(echo ${sdeb_records[$package]} | cut -d',' -f2)"
+
+    all_exist=0
+    for path in ${built_filepaths//:/ }
+    do
+        all_exist=1
+        if [ ! -f "$path" ]
+        then
+            all_exist=0
+            break
+        fi
+    done
+    if [ "$built_revision" = "$current_revision" ] && [ "$all_exist" -gt "0" ]
+	then
+		echo "${package}: SDEB of revision '$current_revision' already built, skipped."
+		return
+	fi
+
     build_dir=${tmp_dir}/debbuild/SDEB/${package}-${version}
     build_ssm_client_tarball ${package} ${build_dir}
     cp -r ${submodule_dir}/${package}/debian ${build_dir}
@@ -44,6 +66,22 @@ build_sdeb() {
     rm -rf ${sdeb_dir}/${package}*
     mv ${tmp_dir}/debbuild/SDEB/${package}_${version}*.dsc ${sdeb_dir}
     mv ${tmp_dir}/debbuild/SDEB/${package}_${version}*.tar.gz ${sdeb_dir}
+
+    printf -v sdeb_filepaths '%s:' $(ls ${sdeb_dir}/${package}*)
+    sdeb_records[$package]="${sdeb_filepaths%%:},${current_revision}"
+
+    record_content=
+    for k in "${!sdeb_records[@]}"
+    do
+        if [ -z "${record_content}" ]
+		then
+			record_content="${k},${sdeb_records[${k}]}"
+		else
+			record_content="${record_content}"$'\n'"${k},${sdeb_records[${k}]}"
+		fi
+    done
+    mkdir -p "${record_dir}"
+    echo "$record_content" > "${sdeb_record_file}"
 }
 
 git_url_to_import_path() {

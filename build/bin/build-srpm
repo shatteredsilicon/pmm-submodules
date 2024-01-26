@@ -80,6 +80,7 @@ function setup()
 
 	mkdir -vp "${buildlog_dir}" || fatal "Error: Failed to create buildlog dir"
 	mkdir -vp "${srpm_dir}" || fatal "Error: Failed to create srpm dir"
+	mkdir -vp "${record_dir}" || fatal "Error: Failed to create record dir"
 
 	#Remove all rpmbuild sources and outputs
 	rm -f "${RPMBUILDROOT}/SOURCES/"*
@@ -322,6 +323,25 @@ function create_srpm()
 {
 	package="${1}"
 
+	built_filepath="$(echo ${srpm_records[$package]} | cut -d',' -f1)"
+	built_revision="$(echo ${srpm_records[$package]} | cut -d',' -f2)"
+
+	cd "${submodule_dir}/${package}"
+	if [ -r "${submodule_dir}/${package}/.git" ]
+	then
+		current_revision="$(git rev-parse --short  HEAD)"
+		[ ! -z "$current_revision" ] || fatal "${package} : Can't not get git commit id of ${package}"
+	else
+		[ -f "${package}.spec" ] || fatal "${package} : No spec file found for ${package}"
+		current_revision="$(rpm -q --qf '%{version}-%{release}' --specfile ${package}.spec)"
+	fi
+
+	if [ "$built_revision" = "$current_revision" ] && [ -f "$built_filepath" ]
+	then
+		trace "${package}: SRPM of revision '$current_revision' already built, skipped."
+		return
+	fi
+
 	(
 		rm -rf ${tmp_dir}/rpmbuild/SRPMS/${package}*
 		rm -rf ${tmp_dir}/rpmbuild/SOURCES/${package}*
@@ -331,6 +351,7 @@ function create_srpm()
 
 		trace "${package} : Building SRPM"
 		rpmbuild -bs --define "debug_package %{nil}" --define "_topdir ${RPMBUILDROOT}" "${RPMBUILDROOT}/SPECS/${package}.spec"
+
 		mv ${tmp_dir}/rpmbuild/SRPMS/${package}*.src.rpm ${srpm_dir}
 	) | tee >(
 		if (grep ': WARN :' > /dev/null)
@@ -347,6 +368,21 @@ function create_srpm()
 			trace "${package} : SRPM FAILED TO BUILD"
 		fi
 	)
+
+	srpm_filepath=$(ls ${srpm_dir}/${package}*.src.rpm | tail -1)
+	srpm_records[$package]="${srpm_filepath},${current_revision}"
+
+	record_content=
+	for k in "${!srpm_records[@]}"
+	do
+		if [ -z "${record_content}" ]
+		then
+			record_content="${k},${srpm_records[${k}]}"
+		else
+			record_content="${record_content}"$'\n'"${k},${srpm_records[${k}]}"
+		fi
+	done
+	echo "$record_content" > "${srpm_record_file}"
 }
 
 ##############################################################################
@@ -378,10 +414,10 @@ function main()
 	if [ "${package}" == "all" ]; then
 		for package in "${packages[@]}"
 		do
-			create_srpm "$package" |& tee "${buildlog_dir}/${package}.log"
+			create_srpm "$package" &> >(tee "${buildlog_dir}/${package}.log")
 		done
 	else
-		create_srpm "$package" |& tee "${buildlog_dir}/${package}.log"
+		create_srpm "$package" &> >(tee "${buildlog_dir}/${package}.log")
 	fi
 
 	trace "$(basename "${0}") : Done"

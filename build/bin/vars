@@ -34,6 +34,7 @@ logs_dir=${root_dir}/logs
 docs_dir=${root_dir}/docs
 audit_dir="${result_dir}/audit"
 buildlog_dir="${result_dir}/buildlogs"
+record_dir="${result_dir}/records"
 docbuild_docker_name="${DOCBUILD_DOCKER_NAME:-shatteredsilicon/docbuild}"
 docbuild_docker_tag="${DOCBUILD_DOCKER_TAG:-latest}"
 docbuild_docker_image="${DOCBUILD_DOCKER_IMAGE:-${docbuild_docker_name}:${docbuild_docker_tag}}"
@@ -50,3 +51,47 @@ debbuild_docker_image="${DEBBUILD_DOCKER_IMAGE:-${debbuild_docker_name}:${debbui
 packages=(ssm-qan-app ssm-client percona-toolkit-ssm-minimal ssm-dashboards ssm-manage ssm-managed ssm-server ssm-qan-api rds_exporter snmp_exporter prometheus MariaDB)
 deb_packages=(ssm-client)
 docker_slim_dir=${root_dir}/build/docker-slim
+
+# Read built srpm records.
+# Records are in format "PACKAGE_NAME,FILE_PATH,REVISION"
+declare -A srpm_records
+srpm_record_file="${record_dir}/srpms"
+if [ -r "${srpm_record_file}" ]
+then
+	while IFS=, read -r package filepath revision; do
+		srpm_records["${package}"]="${filepath},${revision}";
+	done < "$srpm_record_file"
+fi
+
+# Read built rpm records
+# Records are in format "PACKAGE_NAME,FILE_PATH[:FILE_PATH],REVISION"
+declare -A rpm_records
+rpm_record_file="${record_dir}/rpms"
+if [ -r "${rpm_record_file}" ]
+then
+	while IFS=, read -r package filepaths revision; do
+		rpm_records["${package}"]="${filepaths},${revision}";
+	done < "$rpm_record_file"
+fi
+
+# Read built sdeb records
+# Records are in format "PACKAGE_NAME,FILE_PATH[:FILE_PATH],REVISION"
+declare -A sdeb_records
+sdeb_record_file="${record_dir}/sdebs"
+if [ -r "${sdeb_record_file}" ]
+then
+	while IFS=, read -r package filepaths revision; do
+		sdeb_records["${package}"]="${filepaths},${revision}";
+	done < "$sdeb_record_file"
+fi
+
+# Read built deb records
+# Records are in format "PACKAGE_NAME,FILE_PATH[:FILE_PATH],REVISION"
+declare -A deb_records
+deb_record_file="${record_dir}/debs"
+if [ -r "${deb_record_file}" ]
+then
+	while IFS=, read -r package filepaths revision; do
+		deb_records["${package}"]="${filepaths},${revision}";
+	done < "$deb_record_file"
+fi

@@ -30,6 +30,28 @@ build_deb() {
         exit 1
     fi
 
+    built_filepaths="$(echo "${deb_records[${package}]}" | cut -d',' -f1)"
+    built_revision="$(echo "${deb_records[${package}]}" | cut -d',' -f2)"
+    cd "${submodule_dir}/${package}"
+    current_revision="$(git rev-parse --short  HEAD)"
+    [ ! -z "$current_revision" ] || fatal "${package} : Can't not get git commit id of ${package}"
+
+    all_exist=0
+    for path in ${built_filepaths//:/ }
+    do
+        all_exist=1
+        if [ ! -f "$path" ]
+        then
+            all_exist=0
+            break
+        fi
+    done
+    if [ "$built_revision" = "$current_revision" ] && [ "$all_exist" -gt "0" ]
+    then
+        echo "${package}: RPM of revision '$current_revision' already built, skipped."
+        return
+    fi
+
     if ! compgen -G  "${sdeb_dir}/${package}_${version}*.dsc" > /dev/null; then
         echo "sdeb files not exist"
         exit 1
@@ -47,11 +69,27 @@ build_deb() {
         popd
 
         mkdir -p ${deb_dir}
+        rm -rf ${sdeb_dir}/${package}*
         mv ${tmp_dir}/debbuild/DEB/${package}_${version}*.deb ${deb_dir}
         mv ${tmp_dir}/debbuild/DEB/${package}_${version}*.changes ${deb_dir}
     popd
 
     rm -rf ${tmp_dir}/debbuild/DEB/${package}*
+    printf -v deb_filepaths '%s:' $(ls ${deb_dir}/${package}*)
+    deb_records[$package]="${deb_filepaths%%:},${current_revision}"
+
+    record_content=
+    for k in "${!deb_records[@]}"
+    do
+        if [ -z "${record_content}" ]
+		then
+			record_content="${k},${deb_records[${k}]}"
+		else
+			record_content="${record_content}"$'\n'"${k},${deb_records[${k}]}"
+		fi
+    done
+    mkdir -p "${record_dir}"
+    echo "$record_content" > "${deb_record_file}"
 }
 
 main() {
